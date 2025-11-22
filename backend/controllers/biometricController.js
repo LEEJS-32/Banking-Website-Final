@@ -61,9 +61,18 @@ const removeBiometric = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
+    // Store initial count
+    const initialCount = user.biometricCredentials.length;
+
+    // Filter out the credential
     user.biometricCredentials = user.biometricCredentials.filter(
       cred => cred.credentialId !== credentialId
     );
+
+    // Check if any credential was actually removed
+    if (user.biometricCredentials.length === initialCount) {
+      return res.status(404).json({ message: 'Biometric credential not found' });
+    }
 
     // Disable biometric if no credentials left
     if (user.biometricCredentials.length === 0) {
@@ -73,10 +82,12 @@ const removeBiometric = async (req, res) => {
     await user.save();
 
     res.json({
-      message: 'Biometric credential removed',
+      message: 'Biometric credential removed successfully',
       biometricEnabled: user.biometricEnabled,
+      remainingCredentials: user.biometricCredentials.length,
     });
   } catch (error) {
+    console.error('Error removing biometric:', error);
     res.status(500).json({ message: error.message });
   }
 };

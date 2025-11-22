@@ -89,7 +89,7 @@ export const BiometricProvider = ({ children }) => {
       const publicKey = btoa(String.fromCharCode(...new Uint8Array(credential.response.getPublicKey())));
 
       // Send to server
-      const enrollResponse = await axios.post(
+      await axios.post(
         'http://localhost:5000/api/biometric/enroll',
         {
           credentialId,
@@ -170,8 +170,8 @@ export const BiometricProvider = ({ children }) => {
 
   const removeBiometric = async (token, credentialId) => {
     try {
-      await axios.delete(
-        `http://localhost:5000/api/biometric/remove/${credentialId}`,
+      const response = await axios.delete(
+        `http://localhost:5000/api/biometric/remove/${encodeURIComponent(credentialId)}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -179,12 +179,18 @@ export const BiometricProvider = ({ children }) => {
         }
       );
 
+      // Refresh the biometric status
       await checkBiometricAvailability();
-      return { success: true };
+      
+      return { 
+        success: true, 
+        message: response.data.message || 'Biometric credential removed successfully',
+      };
     } catch (error) {
+      console.error('Error removing biometric:', error);
       return {
         success: false,
-        message: error.response?.data?.message || 'Failed to remove biometric',
+        message: error.response?.data?.message || 'Failed to remove biometric credential',
       };
     }
   };

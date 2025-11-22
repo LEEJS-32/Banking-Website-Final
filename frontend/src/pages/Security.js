@@ -11,7 +11,7 @@ const Security = () => {
 
   useEffect(() => {
     refreshStatus();
-  }, []);
+  }, [refreshStatus]);
 
   const handleEnrollBiometric = async () => {
     setLoading(true);
@@ -34,12 +34,18 @@ const Security = () => {
     }
 
     setLoading(true);
+    setMessage({ type: '', text: '' });
+    
     const result = await removeBiometric(user.token, credentialId);
 
     if (result.success) {
-      setMessage({ type: 'success', text: 'Biometric credential removed successfully' });
+      setMessage({ type: 'success', text: result.message || 'Biometric credential removed successfully' });
+      // Refresh the status after a short delay to ensure state is updated
+      setTimeout(() => {
+        refreshStatus();
+      }, 100);
     } else {
-      setMessage({ type: 'error', text: result.message });
+      setMessage({ type: 'error', text: result.message || 'Failed to remove biometric credential' });
     }
 
     setLoading(false);
