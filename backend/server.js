@@ -5,6 +5,7 @@ const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
 const transactionRoutes = require('./routes/transactionRoutes');
 const biometricRoutes = require('./routes/biometricRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
 // Load env vars
 dotenv.config();
@@ -23,6 +24,7 @@ app.use(express.urlencoded({ extended: false }));
 app.use('/api/auth', authRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/biometric', biometricRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Health check
 app.get('/', (req, res) => {

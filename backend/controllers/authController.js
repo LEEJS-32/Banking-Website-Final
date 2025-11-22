@@ -85,6 +85,7 @@ const login = async (req, res) => {
         accountNumber: user.accountNumber,
         balance: user.balance,
         accountType: user.accountType,
+        role: user.role,
         token: generateToken(user._id),
       });
     } else {

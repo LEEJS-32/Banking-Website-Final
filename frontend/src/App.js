@@ -8,7 +8,12 @@ import Dashboard from './pages/Dashboard';
 import Transactions from './pages/Transactions';
 import Transfer from './pages/Transfer';
 import Security from './pages/Security';
+import AdminLogin from './pages/AdminLogin';
+import AdminDashboard from './pages/AdminDashboard';
+import AdminUsers from './pages/AdminUsers';
+import AdminTransactions from './pages/AdminTransactions';
 import PrivateRoute from './components/PrivateRoute';
+import AdminRoute from './components/AdminRoute';
 
 function App() {
   return (
@@ -17,6 +22,7 @@ function App() {
         <Router>
           <div className="min-h-screen bg-gray-50">
             <Routes>
+              {/* User Routes */}
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
               <Route
@@ -51,6 +57,34 @@ function App() {
                   </PrivateRoute>
                 }
               />
+              
+              {/* Admin Routes */}
+              <Route path="/admin/login" element={<AdminLogin />} />
+              <Route
+                path="/admin/dashboard"
+                element={
+                  <AdminRoute>
+                    <AdminDashboard />
+                  </AdminRoute>
+                }
+              />
+              <Route
+                path="/admin/users"
+                element={
+                  <AdminRoute>
+                    <AdminUsers />
+                  </AdminRoute>
+                }
+              />
+              <Route
+                path="/admin/transactions"
+                element={
+                  <AdminRoute>
+                    <AdminTransactions />
+                  </AdminRoute>
+                }
+              />
+              
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
             </Routes>
           </div>

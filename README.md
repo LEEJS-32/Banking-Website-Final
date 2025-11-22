@@ -5,13 +5,43 @@ A full-stack banking website built with Node.js, Express, React, Tailwind CSS, a
 ## Features
 
 - 🔐 User Authentication (Register/Login with JWT)
+- 👤 Admin Panel with user management
 - 💰 Account Management
 - 💸 Deposit & Withdrawal
 - 🔄 Money Transfer between accounts
-- 📊 Transaction History
+- 📊 Transaction History & Monitoring
+- 🔐 Biometric Authentication for high-value transactions
 - 🎨 Modern UI with Tailwind CSS
 - 🔒 Secure password hashing with bcrypt
 - ☁️ MongoDB Atlas cloud database
+
+## Quick Setup
+
+### 1. Database & Admin Setup
+```bash
+cd backend
+npm run setup
+```
+This command will:
+- Update existing users with proper role fields
+- Create an admin account
+- Display database statistics
+
+### 2. Admin Credentials
+- **Email**: `admin@securebank.com`
+- **Password**: `admin123`
+- **Admin Portal**: `http://localhost:3000/admin/login`
+
+### 3. Start the Application
+```bash
+# Terminal 1 - Backend
+cd backend
+npm start
+
+# Terminal 2 - Frontend  
+cd frontend
+npm start
+```
 
 ## Prerequisites
 

@@ -60,6 +60,11 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
+  const setUserData = (userData) => {
+    localStorage.setItem('user', JSON.stringify(userData));
+    setUser(userData);
+  };
+
   const updateBalance = (newBalance) => {
     if (user) {
       const updatedUser = { ...user, balance: newBalance };
@@ -73,6 +78,7 @@ export const AuthProvider = ({ children }) => {
     login,
     register,
     logout,
+    setUserData,
     updateBalance,
     loading,
   };

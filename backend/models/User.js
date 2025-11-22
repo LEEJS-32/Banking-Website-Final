@@ -38,6 +38,15 @@ const userSchema = new mongoose.Schema({
     enum: ['savings', 'checking'],
     default: 'checking',
   },
+  role: {
+    type: String,
+    enum: ['user', 'admin'],
+    default: 'user',
+  },
+  isActive: {
+    type: Boolean,
+    default: true,
+  },
   biometricCredentials: [{
     credentialId: String,
     publicKey: String,
