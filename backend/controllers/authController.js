@@ -18,7 +18,17 @@ const generateAccountNumber = () => {
 // @access  Public
 const register = async (req, res) => {
   try {
-    const { firstName, lastName, email, password, accountType } = req.body;
+    const { 
+      firstName, 
+      lastName, 
+      email, 
+      password, 
+      accountType,
+      gender,
+      dateOfBirth,
+      bank,
+      country
+    } = req.body;
 
     // Check if user exists
     const userExists = await User.findOne({ email });
@@ -45,6 +55,12 @@ const register = async (req, res) => {
       accountNumber,
       accountType: accountType || 'checking',
       balance: 1000, // Initial bonus
+      // Fraud detection fields
+      gender: gender || 'M',
+      dateOfBirth: dateOfBirth || null,
+      bank: bank || 'HSBC',
+      country: country || 'United Kingdom',
+      shippingAddress: country || 'United Kingdom', // Same as country by default
     });
 
     if (user) {
