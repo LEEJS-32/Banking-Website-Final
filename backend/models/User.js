@@ -47,6 +47,27 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: true,
   },
+  // Fraud Detection Fields
+  gender: {
+    type: String,
+    enum: ['M', 'F'],
+    default: 'M',
+  },
+  dateOfBirth: {
+    type: Date,
+  },
+  bank: {
+    type: String,
+    default: 'HSBC',
+  },
+  country: {
+    type: String,
+    default: 'United Kingdom',
+  },
+  shippingAddress: {
+    type: String,
+    default: 'United Kingdom',
+  },
   biometricCredentials: [{
     credentialId: String,
     publicKey: String,

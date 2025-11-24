@@ -1,6 +1,7 @@
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
 const mongoose = require('mongoose');
+const { checkFraud } = require('../services/fraudDetection');
 
 // @desc    Get all transactions for user
 // @route   GET /api/transactions
@@ -141,6 +142,33 @@ const transfer = async (req, res) => {
       return res.status(400).json({ message: 'Insufficient funds' });
     }
 
+    // Fraud Detection Check with correct 14-feature format
+    const fraudResult = await checkFraud({
+      amount,
+      description: description || 'transfer',
+      senderProfile: {
+        gender: sender.gender || 'M',
+        dateOfBirth: sender.dateOfBirth,
+        bank: sender.bank || 'HSBC',
+        country: sender.country || 'United Kingdom',
+        shippingAddress: sender.shippingAddress || sender.country || 'United Kingdom',
+      },
+    });
+
+    // If high-risk fraud detected, block the transaction
+    if (fraudResult.is_fraud && fraudResult.risk_level === 'high') {
+      await session.abortTransaction();
+      return res.status(403).json({
+        message: 'Transaction blocked due to high fraud risk',
+        fraudDetection: {
+          isFraud: fraudResult.is_fraud,
+          riskLevel: fraudResult.risk_level,
+          probability: fraudResult.fraud_probability,
+          reasons: fraudResult.reasons,
+        },
+      });
+    }
+
     // Update balances
     sender.balance -= parseFloat(amount);
     recipient.balance += parseFloat(amount);
@@ -148,7 +176,7 @@ const transfer = async (req, res) => {
     await sender.save({ session });
     await recipient.save({ session });
 
-    // Create transaction records
+    // Create transaction records with fraud detection info
     const senderTransaction = await Transaction.create([{
       userId: sender._id,
       type: 'transfer',
@@ -157,7 +185,14 @@ const transfer = async (req, res) => {
       recipientName: `${recipient.firstName} ${recipient.lastName}`,
       description: description || 'Transfer',
       balanceAfter: sender.balance,
-      status: 'completed',
+      status: (fraudResult.is_fraud && fraudResult.risk_level === 'medium') ? 'pending' : 'completed',
+      fraudDetection: {
+        checked: true,
+        isFraud: fraudResult.is_fraud,
+        fraudProbability: fraudResult.fraud_probability,
+        riskLevel: fraudResult.risk_level,
+        reasons: fraudResult.reasons || [],
+      },
     }], { session });
 
     await Transaction.create([{
@@ -168,14 +203,36 @@ const transfer = async (req, res) => {
       recipientName: `${sender.firstName} ${sender.lastName}`,
       description: description || 'Transfer received',
       balanceAfter: recipient.balance,
-      status: 'completed',
+      status: fraudResult.recommendation === 'REVIEW' ? 'pending' : 'completed',
     }], { session });
 
     await session.commitTransaction();
-    res.status(201).json({
+    
+    const response = {
       transaction: senderTransaction[0],
       newBalance: sender.balance,
-    });
+      fraudDetection: {
+        checked: true,
+        isFraud: fraudResult.is_fraud,
+        riskLevel: fraudResult.risk_level,
+        probability: fraudResult.fraud_probability,
+        reasons: fraudResult.reasons || [],
+      },
+    };
+
+    // Add warning for medium risk transactions
+    if (fraudResult.is_fraud && fraudResult.risk_level === 'medium') {
+      response.warning = {
+        message: 'Transaction flagged for review due to medium risk',
+        fraudDetection: {
+          riskLevel: fraudResult.risk_level,
+          probability: fraudResult.fraud_probability,
+          reasons: fraudResult.reasons,
+        },
+      };
+    }
+
+    res.status(201).json(response);
   } catch (error) {
     await session.abortTransaction();
     res.status(500).json({ message: error.message });

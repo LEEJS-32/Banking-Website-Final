@@ -11,13 +11,32 @@ A full-stack banking website built with Node.js, Express, React, Tailwind CSS, a
 - 🔄 Money Transfer between accounts
 - 📊 Transaction History & Monitoring
 - 🔐 Biometric Authentication for high-value transactions
+- 🤖 **ML-Powered Fraud Detection with 14 Features**
+  - Trained on real credit card fraud data
+  - XGBoost/LightGBM/RandomForest ensemble models
+  - Risk scoring based on user profile, transaction patterns, and merchant categories
+  - Automatic merchant category inference from transaction descriptions
+- 🛡️ Real-time transaction risk analysis with SHAP explainability
+- 🚫 Automatic blocking of high-risk transactions
+- ⚠️ Flagging of medium-risk transactions for review
 - 🎨 Modern UI with Tailwind CSS
 - 🔒 Secure password hashing with bcrypt
 - ☁️ MongoDB Atlas cloud database
 
 ## Quick Setup
 
-### 1. Database & Admin Setup
+### Option 1: One-Click Startup (Recommended)
+```bash
+.\start.ps1
+```
+This PowerShell script will automatically:
+- Start the Fraud Detection API (port 5001)
+- Start the Backend API (port 5000)
+- Start the Frontend (port 3000)
+
+### Option 2: Manual Setup
+
+#### 1. Database & Admin Setup
 ```bash
 cd backend
 npm run setup
@@ -27,21 +46,31 @@ This command will:
 - Create an admin account
 - Display database statistics
 
-### 2. Admin Credentials
-- **Email**: `admin@securebank.com`
-- **Password**: `admin123`
-- **Admin Portal**: `http://localhost:3000/admin/login`
-
-### 3. Start the Application
+#### 2. Start Services
 ```bash
-# Terminal 1 - Backend
+# Terminal 1 - Fraud Detection API
+cd transaction_9_Gemini
+pip install -r requirements.txt
+python fraud_api.py
+
+# Terminal 2 - Backend
 cd backend
 npm start
 
-# Terminal 2 - Frontend  
+# Terminal 3 - Frontend  
 cd frontend
 npm start
 ```
+
+### 3. Access the Application
+- **Frontend**: `http://localhost:3000`
+- **Admin Portal**: `http://localhost:3000/admin/login`
+- **Backend API**: `http://localhost:5000`
+- **Fraud API**: `http://localhost:5001`
+
+### 4. Admin Credentials
+- **Email**: `admin@securebank.com`
+- **Password**: `admin123`
 
 ## Prerequisites
 

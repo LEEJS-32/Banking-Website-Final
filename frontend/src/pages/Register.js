@@ -10,6 +10,10 @@ const Register = () => {
     password: '',
     confirmPassword: '',
     accountType: 'checking',
+    gender: 'M',
+    dateOfBirth: '',
+    bank: 'HSBC',
+    country: 'United Kingdom',
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -128,6 +132,80 @@ const Register = () => {
                 <option value="savings">Savings</option>
               </select>
             </div>
+            
+            {/* Fraud Detection Fields */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="gender" className="block text-sm font-medium text-gray-700 mb-2">
+                  Gender
+                </label>
+                <select
+                  id="gender"
+                  name="gender"
+                  className="input-field"
+                  value={formData.gender}
+                  onChange={handleChange}
+                >
+                  <option value="M">Male</option>
+                  <option value="F">Female</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="dateOfBirth" className="block text-sm font-medium text-gray-700 mb-2">
+                  Date of Birth
+                </label>
+                <input
+                  id="dateOfBirth"
+                  name="dateOfBirth"
+                  type="date"
+                  required
+                  className="input-field"
+                  value={formData.dateOfBirth}
+                  onChange={handleChange}
+                />
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="bank" className="block text-sm font-medium text-gray-700 mb-2">
+                  Bank
+                </label>
+                <select
+                  id="bank"
+                  name="bank"
+                  className="input-field"
+                  value={formData.bank}
+                  onChange={handleChange}
+                >
+                  <option value="HSBC">HSBC</option>
+                  <option value="Lloyds">Lloyds</option>
+                  <option value="Barclays">Barclays</option>
+                  <option value="RBS">RBS</option>
+                  <option value="NatWest">NatWest</option>
+                  <option value="Santander">Santander</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="country" className="block text-sm font-medium text-gray-700 mb-2">
+                  Country
+                </label>
+                <select
+                  id="country"
+                  name="country"
+                  className="input-field"
+                  value={formData.country}
+                  onChange={handleChange}
+                >
+                  <option value="United Kingdom">United Kingdom</option>
+                  <option value="USA">USA</option>
+                  <option value="India">India</option>
+                  <option value="Canada">Canada</option>
+                  <option value="Australia">Australia</option>
+                </select>
+              </div>
+            </div>
+            
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
                 Password

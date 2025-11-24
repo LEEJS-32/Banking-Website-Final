@@ -31,8 +31,35 @@ const transactionSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'completed', 'failed'],
+    enum: ['pending', 'completed', 'failed', 'blocked'],
     default: 'completed',
+  },
+  fraudDetection: {
+    checked: {
+      type: Boolean,
+      default: false,
+    },
+    isFraud: {
+      type: Boolean,
+      default: false,
+    },
+    fraudProbability: {
+      type: Number,
+      default: 0,
+    },
+    riskLevel: {
+      type: String,
+      enum: ['low', 'medium', 'high', 'unknown'],
+      default: 'low',
+    },
+    reasons: [{
+      type: String,
+    }],
+    recommendation: {
+      type: String,
+      enum: ['APPROVE', 'REVIEW', 'BLOCK'],
+      default: 'APPROVE',
+    },
   },
   createdAt: {
     type: Date,

@@ -78,17 +78,62 @@ const Transfer = () => {
       );
 
       updateBalance(response.data.newBalance);
-      setMessage({ type: 'success', text: 'Transfer successful!' });
+      
+      // Show fraud detection results
+      const fraudData = response.data.fraudDetection;
+      
+      if (fraudData) {
+        // Determine message type based on risk level
+        let messageType = 'success';
+        let messageText = 'Transfer successful!';
+        
+        if (fraudData.isFraud) {
+          if (fraudData.riskLevel === 'high') {
+            messageType = 'fraud';
+            messageText = '⚠️ High Risk Transaction - Completed but flagged';
+          } else if (fraudData.riskLevel === 'medium') {
+            messageType = 'warning';
+            messageText = '⚠️ Medium Risk Transaction - Under review';
+          }
+        } else {
+          // Low risk
+          messageText = `✅ Transfer successful! (${fraudData.riskLevel} risk detected)`;
+        }
+        
+        setMessage({ 
+          type: messageType, 
+          text: messageText,
+          fraudData: {
+            riskLevel: fraudData.riskLevel,
+            probability: fraudData.probability,
+            reasons: fraudData.reasons,
+          }
+        });
+      } else {
+        setMessage({ type: 'success', text: 'Transfer successful!' });
+      }
+      
       setFormData({ recipientAccountNumber: '', amount: '', description: '' });
 
+      // Redirect after showing results
       setTimeout(() => {
         navigate('/transactions');
-      }, 2000);
+      }, 5000); // Increased to 5 seconds so user can see fraud results
     } catch (error) {
-      setMessage({
-        type: 'error',
-        text: error.response?.data?.message || 'Transfer failed',
-      });
+      // Check if it's a fraud block
+      if (error.response?.status === 403 && error.response?.data?.fraudDetection) {
+        const fraudData = error.response.data.fraudDetection;
+        setMessage({
+          type: 'fraud',
+          text: error.response.data.message,
+          fraudData: fraudData
+        });
+      } else {
+        setMessage({
+          type: 'error',
+          text: error.response?.data?.message || 'Transfer failed',
+        });
+      }
     }
 
     setLoading(false);
@@ -113,10 +158,39 @@ const Transfer = () => {
                       ? 'bg-green-100 text-green-700'
                       : message.type === 'info'
                       ? 'bg-blue-100 text-blue-700'
+                      : message.type === 'warning'
+                      ? 'bg-yellow-100 text-yellow-800'
+                      : message.type === 'fraud'
+                      ? 'bg-red-100 text-red-800 border-2 border-red-300'
                       : 'bg-red-100 text-red-700'
                   }`}
                 >
-                  {message.text}
+                  <div className="flex items-start">
+                    {message.type === 'fraud' && (
+                      <svg className="w-5 h-5 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                    <div>
+                      <p className="font-semibold">{message.text}</p>
+                      {message.fraudData && (
+                        <div className="mt-2 text-sm">
+                          <p className="font-medium">Risk Level: <span className="uppercase">{message.fraudData.riskLevel}</span></p>
+                          <p className="font-medium">Fraud Probability: {(message.fraudData.probability * 100).toFixed(1)}%</p>
+                          {message.fraudData.reasons && message.fraudData.reasons.length > 0 && (
+                            <div className="mt-2">
+                              <p className="font-medium">Reasons:</p>
+                              <ul className="list-disc list-inside ml-2">
+                                {message.fraudData.reasons.map((reason, index) => (
+                                  <li key={index}>{reason}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                   {message.type === 'error' && !biometricEnabled && parseFloat(formData.amount) > 500 && (
                     <Link to="/security" className="block mt-2 underline font-medium">
                       Go to Security Settings
