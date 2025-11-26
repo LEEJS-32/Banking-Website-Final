@@ -48,6 +48,7 @@ exports.enrollFingerprint = async (req, res) => {
       user.fingerprintEnrolled = true;
       user.fingerprintEnrolledAt = new Date();
       user.fingerprintDevice = 'R307';
+      user.biometricEnabled = true; // Also enable biometric flag
       await user.save();
 
       res.json({
@@ -159,6 +160,12 @@ exports.removeFingerprint = async (req, res) => {
       user.fingerprintEnrolled = false;
       user.fingerprintEnrolledAt = null;
       user.fingerprintDevice = null;
+      
+      // Only disable biometric if no other biometric methods are enrolled
+      if (user.biometricCredentials.length === 0) {
+        user.biometricEnabled = false;
+      }
+      
       await user.save();
 
       res.json({

@@ -122,6 +122,13 @@ const login = async (req, res) => {
     const user = await User.findOne({ email });
 
     if (user && (await user.comparePassword(password))) {
+      // Prevent admin accounts from logging into user side
+      if (user.role === 'admin') {
+        return res.status(403).json({ 
+          message: 'Admin accounts cannot access the user portal. Please use the admin login.' 
+        });
+      }
+
       res.json({
         _id: user._id,
         firstName: user.firstName,

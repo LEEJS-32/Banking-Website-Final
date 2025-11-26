@@ -157,7 +157,28 @@ const transfer = async (req, res) => {
 
     // If high-risk fraud detected, block the transaction
     if (fraudResult.is_fraud && fraudResult.risk_level === 'high') {
-      await session.abortTransaction();
+      // Save blocked transaction record before aborting
+      await Transaction.create([{
+        userId: sender._id,
+        type: 'transfer',
+        amount: -parseFloat(amount),
+        recipientAccountNumber: recipient.accountNumber,
+        recipientName: `${recipient.firstName} ${recipient.lastName}`,
+        description: description || 'Transfer',
+        balanceAfter: sender.balance, // Balance unchanged
+        status: 'blocked',
+        fraudDetection: {
+          checked: true,
+          isFraud: fraudResult.is_fraud,
+          fraudProbability: fraudResult.fraud_probability,
+          riskLevel: fraudResult.risk_level,
+          reasons: fraudResult.reasons || [],
+          recommendation: 'BLOCK',
+        },
+      }], { session });
+
+      await session.commitTransaction();
+      
       return res.status(403).json({
         message: 'Transaction blocked due to high fraud risk',
         fraudDetection: {
@@ -192,6 +213,7 @@ const transfer = async (req, res) => {
         fraudProbability: fraudResult.fraud_probability,
         riskLevel: fraudResult.risk_level,
         reasons: fraudResult.reasons || [],
+        recommendation: fraudResult.recommendation || 'APPROVE',
       },
     }], { session });
 
