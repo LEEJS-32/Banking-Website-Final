@@ -98,6 +98,18 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  // Fingerprint Scanner (R307)
+  fingerprintEnrolled: {
+    type: Boolean,
+    default: false,
+  },
+  fingerprintEnrolledAt: {
+    type: Date,
+  },
+  fingerprintDevice: {
+    type: String,
+    default: 'R307',
+  },
   createdAt: {
     type: Date,
     default: Date.now,

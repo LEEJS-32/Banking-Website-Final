@@ -11,6 +11,12 @@ A full-stack banking website built with Node.js, Express, React, Tailwind CSS, a
 - 🔄 Money Transfer between accounts
 - 📊 Transaction History & Monitoring
 - 🔐 Biometric Authentication for high-value transactions
+  - 🌐 **Browser Biometric** (WebAuthn) - Face ID / Touch ID
+  - 🖐️ **Hardware Fingerprint Scanner** (R307) - SIFT matching algorithm
+- 🪪 **Malaysian IC eKYC Verification**
+  - Photo upload with OCR scanning
+  - Automatic data extraction (IC number, date of birth, gender, name)
+  - Intelligent image cropping for name extraction
 - 🤖 **ML-Powered Fraud Detection with 14 Features**
   - Trained on real credit card fraud data
   - XGBoost/LightGBM/RandomForest ensemble models
@@ -26,6 +32,17 @@ A full-stack banking website built with Node.js, Express, React, Tailwind CSS, a
 ## Quick Setup
 
 ### Option 1: One-Click Startup (Recommended)
+**With Fingerprint Scanner:**
+```bash
+.\start-all.bat
+```
+This will start:
+- Fingerprint Scanner API (port 5002)
+- Fraud Detection API (port 5001)
+- Backend API (port 5000)
+- Frontend (port 3001)
+
+**Without Fingerprint Scanner:**
 ```bash
 .\start.ps1
 ```
@@ -305,15 +322,32 @@ Banking-Website/
 - Delete `node_modules` folder and `package-lock.json`
 - Run `npm install` again
 
+### Fingerprint Scanner Issues
+See the detailed [FINGERPRINT_SETUP.md](FINGERPRINT_SETUP.md) guide for:
+- Scanner connection problems
+- Failed capture/verification
+- Port configuration
+- API troubleshooting
+
+## Additional Documentation
+
+- 📋 [**FINGERPRINT_SETUP.md**](FINGERPRINT_SETUP.md) - Complete fingerprint scanner setup and usage guide
+- 🆔 [**BIOMETRIC_FEATURE.md**](BIOMETRIC_FEATURE.md) - WebAuthn biometric authentication details
+
 ## Future Enhancements
 
+- ✅ ~~Biometric authentication~~ (Completed)
+- ✅ ~~Hardware fingerprint scanner~~ (Completed)
+- ✅ ~~Malaysian IC eKYC verification~~ (Completed)
+- ✅ ~~ML-powered fraud detection~~ (Completed)
 - Account statements/reports
 - Email notifications
-- Two-factor authentication
+- SMS notifications for transactions
 - Bill payments
 - Scheduled transfers
 - Mobile responsive improvements
 - Dark mode
+- Multi-language support
 
 ## License
 

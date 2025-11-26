@@ -16,7 +16,24 @@ const Transfer = () => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [showBiometricPrompt, setShowBiometricPrompt] = useState(false);
+  const [showVerificationChoice, setShowVerificationChoice] = useState(false);
+  const [fingerprintEnrolled, setFingerprintEnrolled] = useState(false);
   const navigate = useNavigate();
+
+  // Check fingerprint enrollment status on mount
+  React.useEffect(() => {
+    const checkFingerprint = async () => {
+      try {
+        const response = await axios.get('http://localhost:5000/api/fingerprint/status', {
+          headers: { Authorization: `Bearer ${user.token}` },
+        });
+        setFingerprintEnrolled(response.data.enrolled);
+      } catch (error) {
+        console.error('Failed to check fingerprint status');
+      }
+    };
+    checkFingerprint();
+  }, [user.token]);
 
   const handleChange = (e) => {
     setFormData({
@@ -25,40 +42,65 @@ const Transfer = () => {
     });
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const amount = parseFloat(formData.amount);
+  const verifyFingerprint = async () => {
+    try {
+      const response = await axios.post(
+        'http://localhost:5000/api/fingerprint/verify',
+        {},
+        { headers: { Authorization: `Bearer ${user.token}` } }
+      );
+      return {
+        success: response.data.verified,
+        message: response.data.message,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.response?.data?.error || 'Fingerprint verification failed',
+      };
+    }
+  };
 
-    // Check if biometric is required for this transaction
-    if (amount > 500) {
-      if (!biometricEnabled) {
-        setMessage({
-          type: 'error',
-          text: 'Transactions over $500 require biometric authentication. Please enroll your biometric in Security settings.',
-        });
-        return;
-      }
+  const handleVerificationChoice = async (method) => {
+    setShowVerificationChoice(false);
+    let verificationSuccess = false;
 
-      // Show biometric prompt
+    if (method === 'browser') {
       setShowBiometricPrompt(true);
-      setMessage({ type: 'info', text: 'Please verify your identity using biometric authentication.' });
-
-      // Request biometric verification
+      setMessage({ type: 'info', text: 'Please verify your identity using browser biometric authentication.' });
       const biometricResult = await verifyBiometric(user.token);
+      verificationSuccess = biometricResult.success;
+      setShowBiometricPrompt(false);
 
-      if (!biometricResult.success) {
+      if (!verificationSuccess) {
         setMessage({
           type: 'error',
           text: biometricResult.message || 'Biometric verification failed. Please try again.',
         });
-        setShowBiometricPrompt(false);
         return;
       }
+    } else if (method === 'fingerprint') {
+      setMessage({ type: 'info', text: 'Please place your finger on the scanner...' });
+      const fingerprintResult = await verifyFingerprint();
+      verificationSuccess = fingerprintResult.success;
 
-      setShowBiometricPrompt(false);
+      if (!verificationSuccess) {
+        setMessage({
+          type: 'error',
+          text: fingerprintResult.message || 'Fingerprint verification failed. Please try again.',
+        });
+        return;
+      }
     }
 
-    // Proceed with transfer
+    if (verificationSuccess) {
+      // Continue with submission
+      const submitEvent = { preventDefault: () => {} };
+      await proceedWithTransfer();
+    }
+  };
+
+  const proceedWithTransfer = async () => {
     setLoading(true);
     setMessage({ type: '', text: '' });
 
@@ -67,7 +109,7 @@ const Transfer = () => {
         'http://localhost:5000/api/transactions/transfer',
         {
           recipientAccountNumber: formData.recipientAccountNumber,
-          amount: amount,
+          amount: parseFloat(formData.amount),
           description: formData.description,
         },
         {
@@ -118,7 +160,7 @@ const Transfer = () => {
       // Redirect after showing results
       setTimeout(() => {
         navigate('/transactions');
-      }, 5000); // Increased to 5 seconds so user can see fraud results
+      }, 5000);
     } catch (error) {
       // Check if it's a fraud block
       if (error.response?.status === 403 && error.response?.data?.fraudDetection) {
@@ -137,6 +179,67 @@ const Transfer = () => {
     }
 
     setLoading(false);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const amount = parseFloat(formData.amount);
+
+    // Check if biometric is required for this transaction
+    if (amount > 500) {
+      // Check if either browser biometric or fingerprint is enrolled
+      if (!biometricEnabled && !fingerprintEnrolled) {
+        setMessage({
+          type: 'error',
+          text: 'Transactions over $500 require biometric authentication. Please enroll your biometric or fingerprint in Security settings.',
+        });
+        return;
+      }
+
+      // If both methods available, show choice
+      if (biometricEnabled && fingerprintEnrolled) {
+        setShowVerificationChoice(true);
+        return;
+      }
+
+      // Use available method
+      let verificationSuccess = false;
+
+      if (biometricEnabled) {
+        setShowBiometricPrompt(true);
+        setMessage({ type: 'info', text: 'Please verify your identity using browser biometric authentication.' });
+        const biometricResult = await verifyBiometric(user.token);
+        verificationSuccess = biometricResult.success;
+        setShowBiometricPrompt(false);
+
+        if (!verificationSuccess) {
+          setMessage({
+            type: 'error',
+            text: biometricResult.message || 'Biometric verification failed. Please try again.',
+          });
+          return;
+        }
+      } else if (fingerprintEnrolled) {
+        setMessage({ type: 'info', text: 'Please place your finger on the scanner...' });
+        const fingerprintResult = await verifyFingerprint();
+        verificationSuccess = fingerprintResult.success;
+
+        if (!verificationSuccess) {
+          setMessage({
+            type: 'error',
+            text: fingerprintResult.message || 'Fingerprint verification failed. Please try again.',
+          });
+          return;
+        }
+      }
+
+      if (!verificationSuccess) {
+        return;
+      }
+    }
+
+    // Proceed with transfer after verification or if under $500
+    await proceedWithTransfer();
   };
 
   return (
@@ -330,7 +433,7 @@ const Transfer = () => {
                   <span className="font-medium">Transactions over $500 require biometric verification</span>
                 </li>
               </ul>
-              {!biometricEnabled && (
+              {!biometricEnabled && !fingerprintEnrolled && (
                 <div className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
                   <p className="text-sm text-orange-800">
                     <strong>Note:</strong> Biometric authentication is not enabled. 
@@ -338,9 +441,70 @@ const Transfer = () => {
                   </p>
                 </div>
               )}
+              {(biometricEnabled || fingerprintEnrolled) && (
+                <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <p className="text-sm text-green-800">
+                    <strong>✓ Biometric Enabled:</strong> 
+                    {biometricEnabled && ' Browser biometric'}
+                    {biometricEnabled && fingerprintEnrolled && ' & '}
+                    {fingerprintEnrolled && ' Hardware fingerprint scanner'}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>
+
+        {/* Verification Method Choice Modal */}
+        {showVerificationChoice && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+              <h3 className="text-xl font-bold text-gray-900 mb-4">Choose Verification Method</h3>
+              <p className="text-gray-600 mb-6">
+                This transaction requires biometric verification. Please select your preferred method:
+              </p>
+              
+              <div className="space-y-3">
+                <button
+                  onClick={() => handleVerificationChoice('browser')}
+                  className="w-full p-4 border-2 border-primary-300 rounded-lg hover:bg-primary-50 transition-colors text-left"
+                >
+                  <div className="flex items-center">
+                    <svg className="w-6 h-6 text-primary-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4" />
+                    </svg>
+                    <div>
+                      <div className="font-semibold text-gray-900">Browser Biometric</div>
+                      <div className="text-sm text-gray-600">Use face ID or fingerprint on this device</div>
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => handleVerificationChoice('fingerprint')}
+                  className="w-full p-4 border-2 border-primary-300 rounded-lg hover:bg-primary-50 transition-colors text-left"
+                >
+                  <div className="flex items-center">
+                    <svg className="w-6 h-6 text-primary-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
+                    </svg>
+                    <div>
+                      <div className="font-semibold text-gray-900">Hardware Scanner</div>
+                      <div className="text-sm text-gray-600">Use R307 fingerprint scanner</div>
+                    </div>
+                  </div>
+                </button>
+              </div>
+
+              <button
+                onClick={() => setShowVerificationChoice(false)}
+                className="mt-4 w-full py-2 text-gray-600 hover:text-gray-800"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

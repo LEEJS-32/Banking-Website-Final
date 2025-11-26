@@ -5,6 +5,7 @@ const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
 const transactionRoutes = require('./routes/transactionRoutes');
 const biometricRoutes = require('./routes/biometricRoutes');
+const fingerprintRoutes = require('./routes/fingerprintRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 
 // Load env vars
@@ -24,6 +25,7 @@ app.use(express.urlencoded({ extended: false }));
 app.use('/api/auth', authRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/biometric', biometricRoutes);
+app.use('/api/fingerprint', fingerprintRoutes);
 app.use('/api/admin', adminRoutes);
 
 // Health check
