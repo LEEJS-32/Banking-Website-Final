@@ -7,11 +7,13 @@ const AdminTransactions = () => {
   const { user } = useAuth();
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedTransaction, setSelectedTransaction] = useState(null);
   const [filters, setFilters] = useState({
     status: '',
     type: '',
     startDate: '',
     endDate: '',
+    fraudOnly: false,
   });
 
   useEffect(() => {
@@ -30,7 +32,17 @@ const AdminTransactions = () => {
         `http://localhost:5000/api/admin/transactions?${queryParams.toString()}`,
         { headers: { Authorization: `Bearer ${user.token}` } }
       );
-      setTransactions(response.data);
+      
+      let filteredTransactions = response.data;
+      
+      // Client-side filter for fraud-only
+      if (filters.fraudOnly) {
+        filteredTransactions = filteredTransactions.filter(t => 
+          t.fraudDetection?.checked && t.fraudDetection?.isFraud
+        );
+      }
+      
+      setTransactions(filteredTransactions);
       setLoading(false);
     } catch (error) {
       console.error('Error fetching transactions:', error);
@@ -39,26 +51,65 @@ const AdminTransactions = () => {
   };
 
   const handleFilterChange = (e) => {
-    setFilters({ ...filters, [e.target.name]: e.target.value });
+    const { name, value, type, checked } = e.target;
+    setFilters({ 
+      ...filters, 
+      [name]: type === 'checkbox' ? checked : value 
+    });
   };
 
   const clearFilters = () => {
-    setFilters({ status: '', type: '', startDate: '', endDate: '' });
+    setFilters({ status: '', type: '', startDate: '', endDate: '', fraudOnly: false });
   };
 
   const getTotalAmount = () => {
-    return transactions.reduce((sum, t) => sum + t.amount, 0);
+    return transactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+  };
+
+  const getFraudCount = () => {
+    return transactions.filter(t => t.fraudDetection?.isFraud).length;
+  };
+
+  const getBlockedAmount = () => {
+    return transactions
+      .filter(t => t.status === 'failed' || t.status === 'blocked')
+      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+  };
+
+  const getRiskLevelColor = (riskLevel) => {
+    switch (riskLevel) {
+      case 'high': return 'text-red-600 bg-red-100';
+      case 'medium': return 'text-orange-600 bg-orange-100';
+      case 'low': return 'text-green-600 bg-green-100';
+      default: return 'text-gray-600 bg-gray-100';
+    }
+  };
+
+  const getRiskLevelBadge = (riskLevel) => {
+    switch (riskLevel) {
+      case 'high': return '🔴 HIGH';
+      case 'medium': return '🟠 MEDIUM';
+      case 'low': return '🟢 LOW';
+      default: return 'UNKNOWN';
+    }
   };
 
   if (loading) {
-    return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading transactions...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">Transaction Management</h2>
-        <Link to="/admin/dashboard" className="text-blue-600 hover:text-blue-700">
+        <Link to="/admin/dashboard" className="text-primary-600 hover:text-primary-700 font-medium">
           ← Back to Dashboard
         </Link>
       </div>
@@ -73,12 +124,13 @@ const AdminTransactions = () => {
               name="status"
               value={filters.status}
               onChange={handleFilterChange}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             >
               <option value="">All Status</option>
               <option value="completed">Completed</option>
               <option value="pending">Pending</option>
               <option value="failed">Failed</option>
+              <option value="blocked">Blocked</option>
             </select>
           </div>
           <div>
@@ -87,7 +139,7 @@ const AdminTransactions = () => {
               name="type"
               value={filters.type}
               onChange={handleFilterChange}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             >
               <option value="">All Types</option>
               <option value="deposit">Deposit</option>
@@ -102,7 +154,7 @@ const AdminTransactions = () => {
               name="startDate"
               value={filters.startDate}
               onChange={handleFilterChange}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             />
           </div>
           <div>
@@ -112,40 +164,57 @@ const AdminTransactions = () => {
               name="endDate"
               value={filters.endDate}
               onChange={handleFilterChange}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             />
           </div>
         </div>
-        <div className="mt-4">
+        <div className="mt-4 flex items-center gap-4">
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              name="fraudOnly"
+              checked={filters.fraudOnly}
+              onChange={handleFilterChange}
+              className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+            />
+            <span className="ml-2 text-sm font-medium text-gray-700">Show Fraud Detected Only</span>
+          </label>
           <button
             onClick={clearFilters}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
           >
             Clear Filters
           </button>
         </div>
       </div>
 
-      {/* Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="text-sm font-medium text-gray-500">Total Transactions</div>
-          <div className="mt-2 text-3xl font-semibold text-gray-900">{transactions.length}</div>
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow p-6 text-white">
+          <div className="text-sm font-medium opacity-90">Total Transactions</div>
+          <div className="mt-2 text-3xl font-bold">{transactions.length}</div>
         </div>
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="text-sm font-medium text-gray-500">Total Volume</div>
-          <div className="mt-2 text-3xl font-semibold text-gray-900">${getTotalAmount().toFixed(2)}</div>
+        <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow p-6 text-white">
+          <div className="text-sm font-medium opacity-90">Total Volume</div>
+          <div className="mt-2 text-3xl font-bold">£{getTotalAmount().toFixed(2)}</div>
         </div>
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="text-sm font-medium text-gray-500">Completed</div>
-          <div className="mt-2 text-3xl font-semibold text-green-600">
-            {transactions.filter(t => t.status === 'completed').length}
-          </div>
+        <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-lg shadow p-6 text-white">
+          <div className="text-sm font-medium opacity-90">Fraud Detected</div>
+          <div className="mt-2 text-3xl font-bold">{getFraudCount()}</div>
+        </div>
+        <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg shadow p-6 text-white">
+          <div className="text-sm font-medium opacity-90">Blocked Amount</div>
+          <div className="mt-2 text-3xl font-bold">£{getBlockedAmount().toFixed(2)}</div>
         </div>
       </div>
 
       {/* Transactions Table */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900">
+            All Transactions {filters.fraudOnly && '(Fraud Detected Only)'}
+          </h3>
+        </div>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -155,49 +224,225 @@ const AdminTransactions = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fraud Risk</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {transactions.map((transaction) => (
-                <tr key={transaction._id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date(transaction.createdAt).toLocaleString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">
-                      {transaction.userId?.firstName} {transaction.userId?.lastName}
-                    </div>
-                    <div className="text-sm text-gray-500">{transaction.userId?.accountNumber}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="text-sm capitalize text-gray-900">{transaction.type}</span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`text-sm font-medium ${
-                      transaction.type === 'deposit' ? 'text-green-600' : 'text-red-600'
-                    }`}>
-                      ${transaction.amount.toFixed(2)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                      transaction.status === 'completed' ? 'bg-green-100 text-green-800' :
-                      transaction.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-red-100 text-red-800'
-                    }`}>
-                      {transaction.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-500">
-                    {transaction.description || '-'}
+              {transactions.length === 0 ? (
+                <tr>
+                  <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
+                    No transactions found
                   </td>
                 </tr>
-              ))}
+              ) : (
+                transactions.map((transaction) => (
+                  <tr 
+                    key={transaction._id} 
+                    className={`hover:bg-gray-50 ${
+                      transaction.fraudDetection?.isFraud ? 'bg-red-50' : ''
+                    }`}
+                  >
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {new Date(transaction.createdAt).toLocaleString()}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-gray-900">
+                        {transaction.userId?.firstName} {transaction.userId?.lastName}
+                      </div>
+                      <div className="text-sm text-gray-500">{transaction.userId?.accountNumber}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="text-sm capitalize text-gray-900">{transaction.type}</span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`text-sm font-medium ${
+                        transaction.amount >= 0 ? 'text-green-600' : 'text-red-600'
+                      }`}>
+                        £{Math.abs(transaction.amount).toFixed(2)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                        transaction.status === 'completed' ? 'bg-green-100 text-green-800' :
+                        transaction.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                        transaction.status === 'failed' ? 'bg-red-100 text-red-800' :
+                        transaction.status === 'blocked' ? 'bg-red-100 text-red-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {transaction.status.toUpperCase()}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {transaction.fraudDetection?.checked ? (
+                        <div className="space-y-1">
+                          {transaction.fraudDetection.isFraud ? (
+                            <>
+                              <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                getRiskLevelColor(transaction.fraudDetection.riskLevel)
+                              }`}>
+                                {getRiskLevelBadge(transaction.fraudDetection.riskLevel)}
+                              </span>
+                              <div className="text-xs text-gray-500">
+                                {(transaction.fraudDetection.fraudProbability * 100).toFixed(1)}% fraud
+                              </div>
+                            </>
+                          ) : (
+                            <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                              ✓ SAFE
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">Not checked</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      {transaction.fraudDetection?.isFraud && (
+                        <button
+                          onClick={() => setSelectedTransaction(transaction)}
+                          className="text-primary-600 hover:text-primary-900 font-medium"
+                        >
+                          View Details
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* Fraud Details Modal */}
+      {selectedTransaction && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900">Fraud Detection Details</h3>
+                  <p className="text-sm text-gray-500 mt-1">Transaction ID: {selectedTransaction._id}</p>
+                </div>
+                <button
+                  onClick={() => setSelectedTransaction(null)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Transaction Info */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Date</p>
+                  <p className="mt-1 text-sm text-gray-900">{new Date(selectedTransaction.createdAt).toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Amount</p>
+                  <p className="mt-1 text-sm font-semibold text-gray-900">£{Math.abs(selectedTransaction.amount).toFixed(2)}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">User</p>
+                  <p className="mt-1 text-sm text-gray-900">
+                    {selectedTransaction.userId?.firstName} {selectedTransaction.userId?.lastName}
+                  </p>
+                  <p className="text-xs text-gray-500">{selectedTransaction.userId?.accountNumber}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Status</p>
+                  <span className={`mt-1 inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                    selectedTransaction.status === 'completed' ? 'bg-green-100 text-green-800' :
+                    selectedTransaction.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                    'bg-red-100 text-red-800'
+                  }`}>
+                    {selectedTransaction.status.toUpperCase()}
+                  </span>
+                </div>
+              </div>
+
+              {/* Fraud Risk Score */}
+              {selectedTransaction.fraudDetection && (
+                <>
+                  <div className="border-t pt-4">
+                    <h4 className="font-semibold text-gray-900 mb-3">Fraud Risk Assessment</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <p className="text-sm font-medium text-gray-500">Risk Level</p>
+                        <p className={`mt-1 text-lg font-bold ${
+                          selectedTransaction.fraudDetection.riskLevel === 'high' ? 'text-red-600' :
+                          selectedTransaction.fraudDetection.riskLevel === 'medium' ? 'text-orange-600' :
+                          'text-green-600'
+                        }`}>
+                          {getRiskLevelBadge(selectedTransaction.fraudDetection.riskLevel)}
+                        </p>
+                      </div>
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <p className="text-sm font-medium text-gray-500">Fraud Probability</p>
+                        <p className="mt-1 text-lg font-bold text-gray-900">
+                          {(selectedTransaction.fraudDetection.fraudProbability * 100).toFixed(2)}%
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Failure Reasons */}
+                  {selectedTransaction.fraudDetection.reasons && selectedTransaction.fraudDetection.reasons.length > 0 && (
+                    <div className="border-t pt-4">
+                      <h4 className="font-semibold text-gray-900 mb-3">
+                        {selectedTransaction.status === 'failed' || selectedTransaction.status === 'blocked' 
+                          ? 'Why This Transaction Failed' 
+                          : 'Fraud Detection Reasons'}
+                      </h4>
+                      <div className="bg-red-50 border-l-4 border-red-400 p-4">
+                        <div className="flex">
+                          <div className="flex-shrink-0">
+                            <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                            </svg>
+                          </div>
+                          <div className="ml-3">
+                            <h3 className="text-sm font-medium text-red-800">Fraud Indicators Detected</h3>
+                            <div className="mt-2 text-sm text-red-700">
+                              <ul className="list-disc pl-5 space-y-1">
+                                {selectedTransaction.fraudDetection.reasons.map((reason, index) => (
+                                  <li key={index}>{reason}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Description */}
+                  {selectedTransaction.description && (
+                    <div className="border-t pt-4">
+                      <h4 className="font-semibold text-gray-900 mb-2">Description</h4>
+                      <p className="text-sm text-gray-600">{selectedTransaction.description}</p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end">
+              <button
+                onClick={() => setSelectedTransaction(null)}
+                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

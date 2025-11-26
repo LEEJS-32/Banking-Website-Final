@@ -85,15 +85,20 @@ const Security = () => {
     try {
       setFingerprintMessage({ type: 'info', text: 'Please place your finger on the scanner...' });
       
+      // Call the backend which will communicate with Python fingerprint API
       const response = await axios.post(
         'http://localhost:5000/api/fingerprint/enroll',
         {},
-        { headers: { Authorization: `Bearer ${user.token}` } }
+        { 
+          headers: { Authorization: `Bearer ${user.token}` },
+          timeout: 30000 
+        }
       );
 
       if (response.data.success) {
         setFingerprintMessage({ type: 'success', text: 'Fingerprint enrolled successfully!' });
         checkFingerprintStatus();
+        refreshStatus(); // Refresh biometric status
       }
     } catch (error) {
       setFingerprintMessage({
@@ -116,11 +121,13 @@ const Security = () => {
     try {
       const response = await axios.delete('http://localhost:5000/api/fingerprint/remove', {
         headers: { Authorization: `Bearer ${user.token}` },
+        timeout: 10000
       });
 
       if (response.data.success) {
         setFingerprintMessage({ type: 'success', text: 'Fingerprint removed successfully!' });
         checkFingerprintStatus();
+        refreshStatus(); // Refresh biometric status
       }
     } catch (error) {
       setFingerprintMessage({
@@ -212,7 +219,7 @@ const Security = () => {
                     Scanner Ready
                   </span>
                 )}
-                {(biometricEnabled || fingerprintStatus.enrolled) && (
+                {((biometricEnabled && credentials.length > 0) || fingerprintStatus.enrolled) && (
                   <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
                     Active
                   </span>
@@ -236,7 +243,7 @@ const Security = () => {
             )}
 
             {/* Info box if no biometric is enrolled */}
-            {!biometricEnabled && !fingerprintStatus.enrolled && (
+            {!(biometricEnabled && credentials.length > 0) && !fingerprintStatus.enrolled && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
                 <h3 className="text-sm font-medium text-blue-900 mb-2">Why Enable Biometric Authentication?</h3>
                 <ul className="text-sm text-blue-800 space-y-1">
@@ -264,7 +271,7 @@ const Security = () => {
             <div className="grid md:grid-cols-2 gap-6">
               {/* Browser Biometric Option */}
               <div className={`border-2 rounded-lg p-6 transition-all ${
-                biometricEnabled 
+                (biometricEnabled && credentials.length > 0)
                   ? 'border-green-500 bg-green-50' 
                   : fingerprintStatus.enrolled 
                   ? 'border-gray-300 bg-gray-100 opacity-60' 
@@ -280,7 +287,7 @@ const Security = () => {
                       <p className="text-xs text-gray-600">Windows Hello / Touch ID</p>
                     </div>
                   </div>
-                  {biometricEnabled && (
+                  {(biometricEnabled && credentials.length > 0) && (
                     <svg className="w-6 h-6 text-green-600" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                     </svg>
@@ -293,7 +300,7 @@ const Security = () => {
                       Not supported on this device/browser
                     </p>
                   </div>
-                ) : biometricEnabled ? (
+                ) : (biometricEnabled && credentials.length > 0) ? (
                   <div>
                     <div className="bg-white rounded p-3 mb-4">
                       <p className="text-sm font-medium text-gray-900 mb-2">Enrolled Devices:</p>
@@ -322,6 +329,17 @@ const Security = () => {
                   <div className="text-center py-4">
                     <p className="text-sm text-gray-600 mb-2">Hardware fingerprint is active</p>
                     <p className="text-xs text-gray-500">Disable hardware scanner to use this method</p>
+                  </div>
+                ) : (biometricEnabled && credentials.length === 0) ? (
+                  <div className="text-center py-4">
+                    <p className="text-sm text-gray-600 mb-2">No browser biometric enrolled yet</p>
+                    <button
+                      onClick={handleEnrollBiometric}
+                      disabled={loading}
+                      className="w-full btn-primary text-sm py-2 mt-2"
+                    >
+                      Enroll Now
+                    </button>
                   </div>
                 ) : (
                   <div>
