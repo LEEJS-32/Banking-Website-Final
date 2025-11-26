@@ -68,6 +68,22 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: 'United Kingdom',
   },
+  // Malaysian IC eKYC
+  icNumber: {
+    type: String,
+    unique: true,
+    sparse: true, // Allows null values but enforces uniqueness for non-null
+  },
+  icVerified: {
+    type: Boolean,
+    default: false,
+  },
+  icVerifiedAt: {
+    type: Date,
+  },
+  birthPlace: {
+    type: String,
+  },
   biometricCredentials: [{
     credentialId: String,
     publicKey: String,
