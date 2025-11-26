@@ -1,5 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { validateMalaysianIC } = require('../utils/icValidator');
+const { preprocessICImage, validateICImage, imageToBase64 } = require('../utils/icOCR');
 
 // Generate JWT Token
 const generateToken = (id) => {
@@ -27,8 +29,24 @@ const register = async (req, res) => {
       gender,
       dateOfBirth,
       bank,
-      country
+      country,
+      icNumber, // Malaysian IC for eKYC
     } = req.body;
+
+    // Validate Malaysian IC if provided
+    let icData = null;
+    if (icNumber) {
+      icData = validateMalaysianIC(icNumber);
+      if (!icData.valid) {
+        return res.status(400).json({ message: icData.error });
+      }
+      
+      // Check if IC already registered
+      const icExists = await User.findOne({ icNumber: icData.icNumber });
+      if (icExists) {
+        return res.status(400).json({ message: 'This IC number is already registered' });
+      }
+    }
 
     // Check if user exists
     const userExists = await User.findOne({ email });
@@ -46,8 +64,8 @@ const register = async (req, res) => {
       accountExists = await User.findOne({ accountNumber });
     }
 
-    // Create user
-    const user = await User.create({
+    // Prepare user data
+    const userData = {
       firstName,
       lastName,
       email,
@@ -55,13 +73,24 @@ const register = async (req, res) => {
       accountNumber,
       accountType: accountType || 'checking',
       balance: 1000, // Initial bonus
-      // Fraud detection fields
-      gender: gender || 'M',
-      dateOfBirth: dateOfBirth || null,
+      // Fraud detection fields - use IC data if available
+      gender: icData ? icData.gender : (gender || 'M'),
+      dateOfBirth: icData ? icData.dateOfBirth : (dateOfBirth || null),
       bank: bank || 'HSBC',
-      country: country || 'United Kingdom',
-      shippingAddress: country || 'United Kingdom', // Same as country by default
-    });
+      country: country || 'Malaysia',
+      shippingAddress: country || 'Malaysia',
+    };
+
+    // Add IC data if verified
+    if (icData) {
+      userData.icNumber = icData.icNumber;
+      userData.icVerified = true;
+      userData.icVerifiedAt = new Date();
+      userData.birthPlace = icData.birthPlace;
+    }
+
+    // Create user
+    const user = await User.create(userData);
 
     if (user) {
       res.status(201).json({
@@ -114,6 +143,97 @@ const login = async (req, res) => {
 
 // @desc    Get user profile
 // @route   GET /api/auth/profile
+// @desc    Verify Malaysian IC number
+// @route   POST /api/auth/verify-ic
+// @access  Public
+const verifyIC = async (req, res) => {
+  try {
+    const { icNumber } = req.body;
+
+    if (!icNumber) {
+      return res.status(400).json({ message: 'IC number is required' });
+    }
+
+    // Validate IC format and extract data
+    const validation = validateMalaysianIC(icNumber);
+
+    if (!validation.valid) {
+      return res.status(400).json({ 
+        message: 'Invalid IC number format or age requirement not met',
+        valid: false 
+      });
+    }
+
+    // Check if IC already registered
+    const existingUser = await User.findOne({ icNumber: validation.icNumber });
+    if (existingUser) {
+      return res.status(400).json({ 
+        message: 'This IC number is already registered',
+        valid: false,
+        duplicate: true
+      });
+    }
+
+    // Return validated IC data for auto-fill
+    res.json({
+      valid: true,
+      message: 'IC verified successfully',
+      data: {
+        icNumber: validation.icNumber,
+        formattedIC: validation.formattedIC,
+        dateOfBirth: validation.dateOfBirth,
+        age: validation.age,
+        gender: validation.gender,
+        birthPlace: validation.birthPlace
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Upload and process IC image
+// @route   POST /api/auth/upload-ic
+// @access  Public
+const uploadIC = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'No image file uploaded' });
+    }
+
+    // Validate image
+    const validation = await validateICImage(req.file.buffer);
+    if (!validation.valid) {
+      return res.status(400).json({ 
+        message: validation.messages.join(' '),
+        valid: false 
+      });
+    }
+
+    // Preprocess image for better OCR
+    const processedImage = await preprocessICImage(req.file.buffer);
+    
+    // Convert to base64 for frontend OCR processing
+    const base64Image = imageToBase64(processedImage);
+
+    res.json({
+      success: true,
+      message: 'Image uploaded and processed successfully',
+      image: base64Image,
+      metadata: {
+        width: validation.width,
+        height: validation.height,
+        format: validation.format
+      }
+    });
+  } catch (error) {
+    console.error('IC upload error:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Get user profile
+// @route   GET /api/auth/profile
 // @access  Private
 const getProfile = async (req, res) => {
   try {
@@ -127,5 +247,7 @@ const getProfile = async (req, res) => {
 module.exports = {
   register,
   login,
+  verifyIC,
+  uploadIC,
   getProfile,
 };
