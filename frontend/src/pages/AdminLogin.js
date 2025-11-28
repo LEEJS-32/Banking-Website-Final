@@ -23,21 +23,14 @@ const AdminLogin = () => {
     setError('');
 
     try {
-      console.log('Attempting login with:', { email: formData.email, password: formData.password ? '***' : 'EMPTY' });
-      const response = await axios.post('http://localhost:5000/api/auth/login', formData);
-      console.log('Login response:', response.data);
-      
-      // Check if user is admin
-      if (response.data.role !== 'admin') {
-        setError('Access denied. Admin credentials required.');
-        setLoading(false);
-        return;
-      }
+      console.log('Attempting admin login with:', { email: formData.email, password: formData.password ? '***' : 'EMPTY' });
+      const response = await axios.post('http://localhost:5000/api/auth/admin/login', formData);
+      console.log('Admin login response:', response.data);
 
       setUserData(response.data);
       navigate('/admin/dashboard');
     } catch (err) {
-      console.error('Login error:', err);
+      console.error('Admin login error:', err);
       setError(err.response?.data?.message || 'Login failed. Please try again.');
       setLoading(false);
     }
