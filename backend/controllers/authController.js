@@ -148,6 +148,40 @@ const login = async (req, res) => {
   }
 };
 
+// @desc    Authenticate admin
+// @route   POST /api/auth/admin/login
+// @access  Public
+const adminLogin = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // Check for user email
+    const user = await User.findOne({ email });
+
+    if (user && (await user.comparePassword(password))) {
+      // Only allow admin accounts
+      if (user.role !== 'admin') {
+        return res.status(403).json({ 
+          message: 'Access denied. Admin credentials required.' 
+        });
+      }
+
+      res.json({
+        _id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        role: user.role,
+        token: generateToken(user._id),
+      });
+    } else {
+      res.status(401).json({ message: 'Invalid email or password' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 // @desc    Get user profile
 // @route   GET /api/auth/profile
 // @desc    Verify Malaysian IC number
@@ -254,6 +288,7 @@ const getProfile = async (req, res) => {
 module.exports = {
   register,
   login,
+  adminLogin,
   verifyIC,
   uploadIC,
   getProfile,
