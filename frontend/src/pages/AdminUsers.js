@@ -63,6 +63,24 @@ const AdminUsers = () => {
     }
   };
 
+  const handleUnlockAccount = async (userId) => {
+    if (!window.confirm('Are you sure you want to unlock this account and clear login attempt blocks?')) {
+      return;
+    }
+
+    try {
+      await axios.put(
+        `http://localhost:5000/api/admin/users/${userId}/unlock`,
+        {},
+        { headers: { Authorization: `Bearer ${user.token}` } }
+      );
+      setMessage({ type: 'success', text: 'Account unlocked successfully' });
+      fetchUsers();
+    } catch (error) {
+      setMessage({ type: 'error', text: error.response?.data?.message || 'Failed to unlock account' });
+    }
+  };
+
   const handleBalanceUpdate = async (e) => {
     e.preventDefault();
     
@@ -114,6 +132,7 @@ const AdminUsers = () => {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Account</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Login Status</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Biometric</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
             </tr>
@@ -145,6 +164,22 @@ const AdminUsers = () => {
                     {u.isActive ? 'Active' : 'Inactive'}
                   </span>
                 </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  {u.isLocked ? (
+                    <div className="flex flex-col">
+                      <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                        🔒 Locked
+                      </span>
+                      <span className="text-xs text-gray-500 mt-1">
+                        {u.loginAttempts || 0} failed attempts
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                      ✓ Unlocked
+                    </span>
+                  )}
+                </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {u.biometricEnabled ? (
                     <span className="text-green-600">✓ Enabled</span>
@@ -157,7 +192,7 @@ const AdminUsers = () => {
                     onClick={() => openBalanceModal(u)}
                     className="text-blue-600 hover:text-blue-900"
                   >
-                    Update Balance
+                    Balance
                   </button>
                   <button
                     onClick={() => handleToggleStatus(u._id, u.isActive)}
@@ -165,6 +200,14 @@ const AdminUsers = () => {
                   >
                     {u.isActive ? 'Deactivate' : 'Activate'}
                   </button>
+                  {u.isLocked && (
+                    <button
+                      onClick={() => handleUnlockAccount(u._id)}
+                      className="text-green-600 hover:text-green-900"
+                    >
+                      Unlock
+                    </button>
+                  )}
                   <button
                     onClick={() => handleDeleteUser(u._id)}
                     className="text-red-600 hover:text-red-900"

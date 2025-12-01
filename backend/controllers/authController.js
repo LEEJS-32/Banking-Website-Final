@@ -1,7 +1,9 @@
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const User = require('../models/User');
 const { validateMalaysianIC } = require('../utils/icValidator');
 const { preprocessICImage, validateICImage, imageToBase64 } = require('../utils/icOCR');
+const { sendVerificationEmail, sendWelcomeEmail } = require('../utils/emailService');
 
 // Generate JWT Token
 const generateToken = (id) => {
@@ -89,10 +91,40 @@ const register = async (req, res) => {
       userData.birthPlace = icData.birthPlace;
     }
 
+    // Generate email verification token
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    userData.emailVerificationToken = verificationToken;
+    userData.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+    userData.isEmailVerified = false;
+
     // Create user
     const user = await User.create(userData);
 
     if (user) {
+      // Send verification email
+      console.log('User created successfully, sending verification email...');
+      const emailResult = await sendVerificationEmail(user.email, user.firstName, verificationToken);
+      
+      if (!emailResult.success) {
+        console.error('Failed to send verification email:', emailResult.error);
+        // Continue with registration even if email fails
+        // But inform the user
+        return res.status(201).json({
+          _id: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          accountNumber: user.accountNumber,
+          balance: user.balance,
+          accountType: user.accountType,
+          isEmailVerified: user.isEmailVerified,
+          message: 'Registration successful! However, we could not send the verification email. Please use the "Resend Verification" option.',
+          emailWarning: true,
+          token: generateToken(user._id),
+        });
+      }
+
+      console.log('Verification email sent successfully');
       res.status(201).json({
         _id: user._id,
         firstName: user.firstName,
@@ -101,12 +133,15 @@ const register = async (req, res) => {
         accountNumber: user.accountNumber,
         balance: user.balance,
         accountType: user.accountType,
+        isEmailVerified: user.isEmailVerified,
+        message: 'Registration successful! Please check your email to verify your account.',
         token: generateToken(user._id),
       });
     } else {
       res.status(400).json({ message: 'Invalid user data' });
     }
   } catch (error) {
+    console.error('Registration error:', error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -121,12 +156,58 @@ const login = async (req, res) => {
     // Check for user email
     const user = await User.findOne({ email });
 
-    if (user && (await user.comparePassword(password))) {
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid email or password' });
+    }
+
+    // Check if account is deactivated by admin
+    if (!user.isActive) {
+      return res.status(403).json({ 
+        message: 'Your account has been deactivated. Please contact support for assistance.',
+        deactivated: true
+      });
+    }
+
+    // Check if email is verified
+    if (!user.isEmailVerified) {
+      return res.status(403).json({ 
+        message: 'Please verify your email address before logging in. Check your inbox for the verification link.',
+        emailNotVerified: true
+      });
+    }
+
+    // Check if account is locked
+    if (user.isLocked && user.lockUntil && user.lockUntil > Date.now()) {
+      const remainingTime = Math.ceil((user.lockUntil - Date.now()) / 60000); // minutes
+      return res.status(423).json({ 
+        message: `Account is locked due to multiple failed login attempts. Please try again in ${remainingTime} minute(s).`,
+        locked: true,
+        lockUntil: user.lockUntil
+      });
+    }
+
+    // Reset lock if time has passed
+    if (user.isLocked && user.lockUntil && user.lockUntil <= Date.now()) {
+      user.isLocked = false;
+      user.loginAttempts = 0;
+      user.lockUntil = null;
+      await user.save();
+    }
+
+    if (await user.comparePassword(password)) {
       // Prevent admin accounts from logging into user side
       if (user.role === 'admin') {
         return res.status(403).json({ 
           message: 'Admin accounts cannot access the user portal. Please use the admin login.' 
         });
+      }
+
+      // Reset login attempts on successful login
+      if (user.loginAttempts > 0) {
+        user.loginAttempts = 0;
+        user.isLocked = false;
+        user.lockUntil = null;
+        await user.save();
       }
 
       res.json({
@@ -141,7 +222,29 @@ const login = async (req, res) => {
         token: generateToken(user._id),
       });
     } else {
-      res.status(401).json({ message: 'Invalid email or password' });
+      // Increment failed login attempts
+      user.loginAttempts = (user.loginAttempts || 0) + 1;
+
+      // Lock account after 3 failed attempts
+      if (user.loginAttempts >= 3) {
+        user.isLocked = true;
+        user.lockUntil = new Date(Date.now() + 15 * 60 * 1000); // Lock for 15 minutes
+        await user.save();
+        
+        return res.status(423).json({ 
+          message: 'Account locked due to 3 failed login attempts. Please try again in 15 minutes.',
+          locked: true,
+          lockUntil: user.lockUntil
+        });
+      }
+
+      await user.save();
+      const attemptsLeft = 3 - user.loginAttempts;
+      
+      res.status(401).json({ 
+        message: `Invalid email or password. ${attemptsLeft} attempt(s) remaining.`,
+        attemptsLeft
+      });
     }
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -285,6 +388,90 @@ const getProfile = async (req, res) => {
   }
 };
 
+// @desc    Verify email with token
+// @route   GET /api/auth/verify-email/:token
+// @access  Public
+const verifyEmail = async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    // Find user with this verification token
+    const user = await User.findOne({
+      emailVerificationToken: token,
+      emailVerificationExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({ 
+        message: 'Invalid or expired verification link. Please request a new verification email.',
+        expired: true
+      });
+    }
+
+    // Mark email as verified
+    user.isEmailVerified = true;
+    user.emailVerificationToken = undefined;
+    user.emailVerificationExpires = undefined;
+    await user.save();
+
+    // Send welcome email
+    await sendWelcomeEmail(user.email, user.firstName);
+
+    res.json({
+      success: true,
+      message: 'Email verified successfully! You can now log in to your account.',
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Resend verification email
+// @route   POST /api/auth/resend-verification
+// @access  Public
+const resendVerificationEmail = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' });
+    }
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({ message: 'No account found with this email address' });
+    }
+
+    if (user.isEmailVerified) {
+      return res.status(400).json({ message: 'Email is already verified' });
+    }
+
+    // Generate new verification token
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    user.emailVerificationToken = verificationToken;
+    user.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+    await user.save();
+
+    // Send verification email
+    const emailResult = await sendVerificationEmail(user.email, user.firstName, verificationToken);
+
+    if (!emailResult.success) {
+      return res.status(500).json({ 
+        message: 'Failed to send verification email. Please try again later.',
+        error: emailResult.error
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Verification email sent! Please check your inbox.',
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   register,
   login,
@@ -292,4 +479,6 @@ module.exports = {
   verifyIC,
   uploadIC,
   getProfile,
+  verifyEmail,
+  resendVerificationEmail,
 };

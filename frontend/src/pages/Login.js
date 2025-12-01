@@ -8,6 +8,7 @@ const Login = () => {
     password: '',
   });
   const [error, setError] = useState('');
+  const [emailNotVerified, setEmailNotVerified] = useState(false);
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -22,6 +23,7 @@ const Login = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setEmailNotVerified(false);
     setLoading(true);
 
     const result = await login(formData.email, formData.password);
@@ -30,6 +32,10 @@ const Login = () => {
       navigate('/dashboard');
     } else {
       setError(result.message);
+      // Check if error is due to email not verified
+      if (result.emailNotVerified) {
+        setEmailNotVerified(true);
+      }
     }
 
     setLoading(false);
@@ -50,6 +56,16 @@ const Login = () => {
           {error && (
             <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
               {error}
+              {emailNotVerified && (
+                <div className="mt-2">
+                  <Link 
+                    to="/resend-verification" 
+                    className="text-sm font-medium text-red-800 hover:text-red-900 underline"
+                  >
+                    Resend verification email
+                  </Link>
+                </div>
+              )}
             </div>
           )}
           <div className="rounded-md shadow-sm space-y-4">

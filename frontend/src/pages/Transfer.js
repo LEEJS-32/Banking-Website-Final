@@ -185,60 +185,58 @@ const Transfer = () => {
     e.preventDefault();
     const amount = parseFloat(formData.amount);
 
-    // Check if biometric is required for this transaction
-    if (amount > 500) {
-      // Check if either browser biometric or fingerprint is enrolled
-      if (!biometricEnabled && !fingerprintEnrolled) {
+    // Require biometric for ALL transactions
+    // Check if either browser biometric or fingerprint is enrolled
+    if (!biometricEnabled && !fingerprintEnrolled) {
+      setMessage({
+        type: 'error',
+        text: 'All transactions require biometric authentication. Please enroll your biometric or fingerprint in Security settings.',
+      });
+      return;
+    }
+
+    // If both methods available, show choice
+    if (biometricEnabled && fingerprintEnrolled) {
+      setShowVerificationChoice(true);
+      return;
+    }
+
+    // Use available method
+    let verificationSuccess = false;
+
+    if (biometricEnabled) {
+      setShowBiometricPrompt(true);
+      setMessage({ type: 'info', text: 'Please verify your identity using browser biometric authentication.' });
+      const biometricResult = await verifyBiometric(user.token);
+      verificationSuccess = biometricResult.success;
+      setShowBiometricPrompt(false);
+
+      if (!verificationSuccess) {
         setMessage({
           type: 'error',
-          text: 'Transactions over $500 require biometric authentication. Please enroll your biometric or fingerprint in Security settings.',
+          text: biometricResult.message || 'Biometric verification failed. Please try again.',
         });
         return;
       }
-
-      // If both methods available, show choice
-      if (biometricEnabled && fingerprintEnrolled) {
-        setShowVerificationChoice(true);
-        return;
-      }
-
-      // Use available method
-      let verificationSuccess = false;
-
-      if (biometricEnabled) {
-        setShowBiometricPrompt(true);
-        setMessage({ type: 'info', text: 'Please verify your identity using browser biometric authentication.' });
-        const biometricResult = await verifyBiometric(user.token);
-        verificationSuccess = biometricResult.success;
-        setShowBiometricPrompt(false);
-
-        if (!verificationSuccess) {
-          setMessage({
-            type: 'error',
-            text: biometricResult.message || 'Biometric verification failed. Please try again.',
-          });
-          return;
-        }
-      } else if (fingerprintEnrolled) {
-        setMessage({ type: 'info', text: 'Please place your finger on the scanner...' });
-        const fingerprintResult = await verifyFingerprint();
-        verificationSuccess = fingerprintResult.success;
-
-        if (!verificationSuccess) {
-          setMessage({
-            type: 'error',
-            text: fingerprintResult.message || 'Fingerprint verification failed. Please try again.',
-          });
-          return;
-        }
-      }
+    } else if (fingerprintEnrolled) {
+      setMessage({ type: 'info', text: 'Please place your finger on the scanner...' });
+      const fingerprintResult = await verifyFingerprint();
+      verificationSuccess = fingerprintResult.success;
 
       if (!verificationSuccess) {
+        setMessage({
+          type: 'error',
+          text: fingerprintResult.message || 'Fingerprint verification failed. Please try again.',
+        });
         return;
       }
     }
 
-    // Proceed with transfer after verification or if under $500
+    if (!verificationSuccess) {
+      return;
+    }
+
+    // Proceed with transfer after verification
     await proceedWithTransfer();
   };
 
@@ -294,11 +292,6 @@ const Transfer = () => {
                       )}
                     </div>
                   </div>
-                  {message.type === 'error' && !biometricEnabled && parseFloat(formData.amount) > 500 && (
-                    <Link to="/security" className="block mt-2 underline font-medium">
-                      Go to Security Settings
-                    </Link>
-                  )}
                 </div>
               )}
 
@@ -342,11 +335,9 @@ const Transfer = () => {
                     className="block text-sm font-medium text-gray-700 mb-2"
                   >
                     Amount
-                    {parseFloat(formData.amount) > 500 && (
-                      <span className="ml-2 text-xs text-orange-600 font-medium">
-                        (Biometric verification required)
-                      </span>
-                    )}
+                    <span className="ml-2 text-xs text-orange-600 font-medium">
+                      (Biometric verification required)
+                    </span>
                   </label>
                   <div className="relative">
                     <span className="absolute left-3 top-2 text-gray-500">$</span>
@@ -430,14 +421,14 @@ const Transfer = () => {
                 </li>
                 <li className="flex items-start">
                   <span className="text-orange-600 mr-2">🔒</span>
-                  <span className="font-medium">Transactions over $500 require biometric verification</span>
+                  <span className="font-medium">All transactions require biometric verification</span>
                 </li>
               </ul>
               {!biometricEnabled && !fingerprintEnrolled && (
                 <div className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
                   <p className="text-sm text-orange-800">
                     <strong>Note:</strong> Biometric authentication is not enabled. 
-                    <Link to="/security" className="underline ml-1">Enable it now</Link> to make transfers over $500.
+                    <Link to="/security" className="underline ml-1">Enable it now</Link> to make transfers.
                   </p>
                 </div>
               )}

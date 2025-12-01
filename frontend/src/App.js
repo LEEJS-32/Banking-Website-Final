@@ -4,6 +4,8 @@ import { AuthProvider } from './context/AuthContext';
 import { BiometricProvider } from './context/BiometricContext';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import VerifyEmail from './pages/VerifyEmail';
+import ResendVerification from './pages/ResendVerification';
 import Dashboard from './pages/Dashboard';
 import Transactions from './pages/Transactions';
 import Transfer from './pages/Transfer';
@@ -25,6 +27,8 @@ function App() {
               {/* User Routes */}
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
+              <Route path="/verify-email/:token" element={<VerifyEmail />} />
+              <Route path="/resend-verification" element={<ResendVerification />} />
               <Route
                 path="/dashboard"
                 element={

@@ -114,16 +114,26 @@ const updateUserStatus = async (req, res) => {
     }
     
     user.isActive = isActive;
+    
+    // When activating a user, also reset any login attempt blocks
+    if (isActive) {
+      user.loginAttempts = 0;
+      user.isLocked = false;
+      user.lockUntil = null;
+    }
+    
     await user.save();
     
     res.json({
-      message: `User ${isActive ? 'activated' : 'deactivated'} successfully`,
+      message: `User ${isActive ? 'activated' : 'deactivated'} successfully${isActive && user.isLocked !== false ? '. Login blocks have been cleared.' : ''}`,
       user: {
         _id: user._id,
         firstName: user.firstName,
         lastName: user.lastName,
         email: user.email,
         isActive: user.isActive,
+        isLocked: user.isLocked,
+        loginAttempts: user.loginAttempts,
       },
     });
   } catch (error) {
@@ -231,6 +241,43 @@ const deleteUser = async (req, res) => {
   }
 };
 
+// @desc    Unlock user account (clear login attempt blocks)
+// @route   PUT /api/admin/users/:id/unlock
+// @access  Private/Admin
+const unlockUserAccount = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    if (user.role === 'admin') {
+      return res.status(400).json({ message: 'Cannot modify admin accounts' });
+    }
+    
+    // Reset login attempt locks
+    user.loginAttempts = 0;
+    user.isLocked = false;
+    user.lockUntil = null;
+    await user.save();
+    
+    res.json({
+      message: 'User account unlocked successfully. Login blocks have been cleared.',
+      user: {
+        _id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        isLocked: user.isLocked,
+        loginAttempts: user.loginAttempts,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   getDashboardStats,
   getAllUsers,
@@ -239,4 +286,5 @@ module.exports = {
   updateUserBalance,
   getAllTransactions,
   deleteUser,
+  unlockUserAccount,
 };

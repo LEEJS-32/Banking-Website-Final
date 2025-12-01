@@ -8,6 +8,7 @@ const {
   updateUserBalance,
   getAllTransactions,
   deleteUser,
+  unlockUserAccount,
 } = require('../controllers/adminController');
 const { protect } = require('../middleware/auth');
 const { adminOnly } = require('../middleware/admin');
@@ -24,6 +25,7 @@ router.get('/users', getAllUsers);
 router.get('/users/:id', getUserById);
 router.put('/users/:id/status', updateUserStatus);
 router.put('/users/:id/balance', updateUserBalance);
+router.put('/users/:id/unlock', unlockUserAccount);
 router.delete('/users/:id', deleteUser);
 
 // Transaction management

@@ -110,6 +110,29 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: 'R307',
   },
+  // Failed Login Attempts Tracking
+  loginAttempts: {
+    type: Number,
+    default: 0,
+  },
+  lockUntil: {
+    type: Date,
+  },
+  isLocked: {
+    type: Boolean,
+    default: false,
+  },
+  // Email Verification
+  isEmailVerified: {
+    type: Boolean,
+    default: false,
+  },
+  emailVerificationToken: {
+    type: String,
+  },
+  emailVerificationExpires: {
+    type: Date,
+  },
   createdAt: {
     type: Date,
     default: Date.now,

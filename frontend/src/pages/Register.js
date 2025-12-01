@@ -490,7 +490,10 @@ const Register = () => {
     const result = await register(userData);
 
     if (result.success) {
-      navigate('/dashboard');
+      // Show success message and redirect to a verification pending page
+      setError('');
+      alert('Registration successful! Please check your email to verify your account before logging in.');
+      navigate('/login');
     } else {
       setError(result.message);
     }

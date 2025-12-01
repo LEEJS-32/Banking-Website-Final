@@ -37,6 +37,9 @@ export const AuthProvider = ({ children }) => {
       return {
         success: false,
         message: error.response?.data?.message || 'Login failed',
+        emailNotVerified: error.response?.data?.emailNotVerified || false,
+        locked: error.response?.data?.locked || false,
+        deactivated: error.response?.data?.deactivated || false,
       };
     }
   };
