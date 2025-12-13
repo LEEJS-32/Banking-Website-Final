@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 
@@ -7,10 +7,15 @@ const VerifyEmail = () => {
   const navigate = useNavigate();
   const [status, setStatus] = useState('verifying'); // verifying, success, error
   const [message, setMessage] = useState('');
+  const hasVerified = useRef(false);
 
   useEffect(() => {
-    verifyEmailToken();
-  }, [token]);
+    // Prevent double verification call (React 18 StrictMode calls useEffect twice)
+    if (!hasVerified.current && token) {
+      hasVerified.current = true;
+      verifyEmailToken();
+    }
+  }, []);
 
   const verifyEmailToken = async () => {
     try {
