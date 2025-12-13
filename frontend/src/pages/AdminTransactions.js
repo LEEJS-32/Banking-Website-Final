@@ -274,7 +274,16 @@ const AdminTransactions = () => {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      {transaction.fraudDetection?.checked ? (
+                      {transaction.status === 'blocked' && transaction.blockReason ? (
+                        <div className="space-y-1">
+                          <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-orange-100 text-orange-800">
+                            ⏱️ RATE LIMITED
+                          </span>
+                          <div className="text-xs text-gray-500">
+                            Too frequent
+                          </div>
+                        </div>
+                      ) : transaction.fraudDetection?.checked ? (
                         <div className="space-y-1">
                           {transaction.fraudDetection.isFraud ? (
                             <>
@@ -298,7 +307,14 @@ const AdminTransactions = () => {
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {transaction.fraudDetection?.isFraud && (
+                      {transaction.status === 'blocked' && transaction.blockReason ? (
+                        <button
+                          onClick={() => setSelectedTransaction(transaction)}
+                          className="text-orange-600 hover:text-orange-900 font-medium"
+                        >
+                          View Reason
+                        </button>
+                      ) : transaction.fraudDetection?.isFraud && (
                         <button
                           onClick={() => setSelectedTransaction(transaction)}
                           className="text-primary-600 hover:text-primary-900 font-medium"
@@ -322,7 +338,9 @@ const AdminTransactions = () => {
             <div className="p-6 border-b border-gray-200">
               <div className="flex justify-between items-start">
                 <div>
-                  <h3 className="text-xl font-bold text-gray-900">Fraud Detection Details</h3>
+                  <h3 className="text-xl font-bold text-gray-900">
+                    {selectedTransaction.blockReason ? 'Rate Limit Block Details' : 'Fraud Detection Details'}
+                  </h3>
                   <p className="text-sm text-gray-500 mt-1">Transaction ID: {selectedTransaction._id}</p>
                 </div>
                 <button
@@ -366,8 +384,30 @@ const AdminTransactions = () => {
                 </div>
               </div>
 
+              {/* Rate Limit Block Info */}
+              {selectedTransaction.blockReason && (
+                <div className="border-t pt-4">
+                  <h4 className="font-semibold text-gray-900 mb-3">Rate Limit Block Information</h4>
+                  <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                    <div className="flex items-start">
+                      <svg className="w-6 h-6 text-orange-600 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <div>
+                        <p className="font-medium text-orange-900">Transaction Blocked Due to Rate Limit</p>
+                        <p className="mt-2 text-sm text-orange-800">{selectedTransaction.blockReason}</p>
+                        <p className="mt-3 text-xs text-orange-700">
+                          This transaction was automatically blocked because the user exceeded the allowed transaction frequency. 
+                          The user was temporarily blocked from making transactions to prevent potential fraud or abuse.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Fraud Risk Score */}
-              {selectedTransaction.fraudDetection && (
+              {selectedTransaction.fraudDetection && !selectedTransaction.blockReason && (
                 <>
                   <div className="border-t pt-4">
                     <h4 className="font-semibold text-gray-900 mb-3">Fraud Risk Assessment</h4>

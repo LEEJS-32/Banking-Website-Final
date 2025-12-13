@@ -2,6 +2,7 @@ const Transaction = require('../models/Transaction');
 const User = require('../models/User');
 const mongoose = require('mongoose');
 const { checkFraud } = require('../services/fraudDetection');
+const { checkRateLimit } = require('../middleware/rateLimit');
 
 // @desc    Get all transactions for user
 // @route   GET /api/transactions
@@ -30,6 +31,31 @@ const deposit = async (req, res) => {
     if (amount <= 0) {
       await session.abortTransaction();
       return res.status(400).json({ message: 'Amount must be greater than 0' });
+    }
+
+    // Check rate limit
+    const rateLimitResult = await checkRateLimit(req.user._id, parseFloat(amount));
+    if (!rateLimitResult.allowed) {
+      // Create blocked transaction record
+      const user = await User.findById(req.user._id).session(session);
+      await Transaction.create([{
+        userId: req.user._id,
+        type: 'deposit',
+        amount: parseFloat(amount),
+        description: description || 'Deposit',
+        balanceAfter: user.balance,
+        status: 'blocked',
+        blockReason: rateLimitResult.reason,
+      }], { session });
+      
+      await session.commitTransaction();
+      return res.status(429).json({
+        message: 'Transaction limit exceeded',
+        blocked: true,
+        reason: rateLimitResult.reason,
+        blockedUntil: rateLimitResult.blockedUntil,
+        minutesRemaining: rateLimitResult.minutesRemaining,
+      });
     }
 
     // Update user balance
@@ -73,6 +99,31 @@ const withdraw = async (req, res) => {
     if (amount <= 0) {
       await session.abortTransaction();
       return res.status(400).json({ message: 'Amount must be greater than 0' });
+    }
+
+    // Check rate limit
+    const rateLimitResult = await checkRateLimit(req.user._id, parseFloat(amount));
+    if (!rateLimitResult.allowed) {
+      // Create blocked transaction record
+      const user = await User.findById(req.user._id).session(session);
+      await Transaction.create([{
+        userId: req.user._id,
+        type: 'withdrawal',
+        amount: parseFloat(amount),
+        description: description || 'Withdrawal',
+        balanceAfter: user.balance,
+        status: 'blocked',
+        blockReason: rateLimitResult.reason,
+      }], { session });
+      
+      await session.commitTransaction();
+      return res.status(429).json({
+        message: 'Transaction limit exceeded',
+        blocked: true,
+        reason: rateLimitResult.reason,
+        blockedUntil: rateLimitResult.blockedUntil,
+        minutesRemaining: rateLimitResult.minutesRemaining,
+      });
     }
 
     const user = await User.findById(req.user._id).session(session);
@@ -122,6 +173,36 @@ const transfer = async (req, res) => {
     if (amount <= 0) {
       await session.abortTransaction();
       return res.status(400).json({ message: 'Amount must be greater than 0' });
+    }
+
+    // Check rate limit BEFORE fraud detection
+    const rateLimitResult = await checkRateLimit(req.user._id, parseFloat(amount));
+    if (!rateLimitResult.allowed) {
+      // Create blocked transaction record
+      const sender = await User.findById(req.user._id).session(session);
+      const recipient = await User.findOne({ accountNumber: recipientAccountNumber }).session(session);
+      
+      await Transaction.create([{
+        userId: req.user._id,
+        type: 'transfer',
+        amount: parseFloat(amount),
+        recipientId: recipient?._id,
+        recipientAccountNumber: recipientAccountNumber,
+        recipientName: recipient ? `${recipient.firstName} ${recipient.lastName}` : 'Unknown',
+        description: description || 'Transfer',
+        balanceAfter: sender.balance,
+        status: 'blocked',
+        blockReason: rateLimitResult.reason,
+      }], { session });
+      
+      await session.commitTransaction();
+      return res.status(429).json({
+        message: 'Transaction limit exceeded',
+        blocked: true,
+        reason: rateLimitResult.reason,
+        blockedUntil: rateLimitResult.blockedUntil,
+        minutesRemaining: rateLimitResult.minutesRemaining,
+      });
     }
 
     const sender = await User.findById(req.user._id).session(session);

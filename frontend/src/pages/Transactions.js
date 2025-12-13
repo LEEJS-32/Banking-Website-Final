@@ -155,6 +155,8 @@ const Transactions = () => {
                               ? 'bg-green-100 text-green-800'
                               : transaction.status === 'pending'
                               ? 'bg-yellow-100 text-yellow-800'
+                              : transaction.status === 'blocked'
+                              ? 'bg-orange-100 text-orange-800'
                               : 'bg-red-100 text-red-800'
                           }`}
                         >

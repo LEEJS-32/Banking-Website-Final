@@ -278,6 +278,74 @@ const unlockUserAccount = async (req, res) => {
   }
 };
 
+// @desc    Get all users with transaction blocks
+// @route   GET /api/admin/users/blocked
+// @access  Private/Admin
+const getBlockedUsers = async (req, res) => {
+  try {
+    const now = new Date();
+    const blockedUsers = await User.find({
+      role: 'user',
+      transactionBlockedUntil: { $exists: true, $ne: null },
+    }).select('firstName lastName email accountNumber transactionBlockedUntil transactionBlockReason recentTransactions');
+
+    const formattedUsers = blockedUsers.map(user => ({
+      _id: user._id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      accountNumber: user.accountNumber,
+      blockedUntil: user.transactionBlockedUntil,
+      blockReason: user.transactionBlockReason,
+      isCurrentlyBlocked: user.transactionBlockedUntil > now,
+      minutesRemaining: user.transactionBlockedUntil > now 
+        ? Math.ceil((user.transactionBlockedUntil - now) / 60000)
+        : 0,
+      recentTransactionCount: user.recentTransactions?.length || 0,
+    }));
+
+    res.json(formattedUsers);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Unblock user from transaction limits
+// @route   PUT /api/admin/users/:id/unblock-transactions
+// @access  Private/Admin
+const unblockUserTransactions = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    if (user.role === 'admin') {
+      return res.status(400).json({ message: 'Cannot modify admin accounts' });
+    }
+    
+    // Clear transaction blocks and recent transactions
+    user.transactionBlockedUntil = undefined;
+    user.transactionBlockReason = undefined;
+    user.recentTransactions = [];
+    await user.save();
+    
+    res.json({
+      message: 'User transaction limits reset successfully. User can now make transactions.',
+      user: {
+        _id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        accountNumber: user.accountNumber,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   getDashboardStats,
   getAllUsers,
@@ -287,4 +355,6 @@ module.exports = {
   getAllTransactions,
   deleteUser,
   unlockUserAccount,
+  getBlockedUsers,
+  unblockUserTransactions,
 };

@@ -34,6 +34,9 @@ const transactionSchema = new mongoose.Schema({
     enum: ['pending', 'completed', 'failed', 'blocked'],
     default: 'completed',
   },
+  blockReason: {
+    type: String,
+  },
   fraudDetection: {
     checked: {
       type: Boolean,

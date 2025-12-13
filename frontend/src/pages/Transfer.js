@@ -162,8 +162,20 @@ const Transfer = () => {
         navigate('/transactions');
       }, 5000);
     } catch (error) {
+      // Check if it's a rate limit block
+      if (error.response?.status === 429 && error.response?.data?.blocked) {
+        const blockData = error.response.data;
+        setMessage({
+          type: 'error',
+          text: `🚫 ${blockData.reason}`,
+          blockInfo: {
+            blockedUntil: blockData.blockedUntil,
+            minutesRemaining: blockData.minutesRemaining,
+          }
+        });
+      }
       // Check if it's a fraud block
-      if (error.response?.status === 403 && error.response?.data?.fraudDetection) {
+      else if (error.response?.status === 403 && error.response?.data?.fraudDetection) {
         const fraudData = error.response.data.fraudDetection;
         setMessage({
           type: 'fraud',
@@ -274,6 +286,12 @@ const Transfer = () => {
                     )}
                     <div>
                       <p className="font-semibold">{message.text}</p>
+                      {message.blockInfo && (
+                        <div className="mt-2 text-sm">
+                          <p className="font-medium">⏱️ You can try again in {message.blockInfo.minutesRemaining} minutes</p>
+                          <p className="text-xs mt-1">Too many transactions detected. Please wait before making another transaction.</p>
+                        </div>
+                      )}
                       {message.fraudData && (
                         <div className="mt-2 text-sm">
                           <p className="font-medium">Risk Level: <span className="uppercase">{message.fraudData.riskLevel}</span></p>

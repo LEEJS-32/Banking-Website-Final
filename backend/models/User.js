@@ -133,6 +133,24 @@ const userSchema = new mongoose.Schema({
   emailVerificationExpires: {
     type: Date,
   },
+  // Rate Limiting for Transaction Frequency
+  recentTransactions: [{
+    timestamp: {
+      type: Date,
+      default: Date.now,
+    },
+    amount: Number,
+    weight: {
+      type: Number,
+      default: 1, // Transactions > RM1000 = weight 2
+    },
+  }],
+  transactionBlockedUntil: {
+    type: Date,
+  },
+  transactionBlockReason: {
+    type: String,
+  },
   createdAt: {
     type: Date,
     default: Date.now,

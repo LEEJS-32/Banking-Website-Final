@@ -9,6 +9,8 @@ const {
   getAllTransactions,
   deleteUser,
   unlockUserAccount,
+  getBlockedUsers,
+  unblockUserTransactions,
 } = require('../controllers/adminController');
 const { protect } = require('../middleware/auth');
 const { adminOnly } = require('../middleware/admin');
@@ -22,10 +24,12 @@ router.get('/dashboard', getDashboardStats);
 
 // User management
 router.get('/users', getAllUsers);
+router.get('/users/blocked/list', getBlockedUsers); // Must come before /:id routes
 router.get('/users/:id', getUserById);
 router.put('/users/:id/status', updateUserStatus);
 router.put('/users/:id/balance', updateUserBalance);
 router.put('/users/:id/unlock', unlockUserAccount);
+router.put('/users/:id/unblock-transactions', unblockUserTransactions);
 router.delete('/users/:id', deleteUser);
 
 // Transaction management

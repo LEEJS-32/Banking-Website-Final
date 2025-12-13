@@ -14,6 +14,7 @@ import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminUsers from './pages/AdminUsers';
 import AdminTransactions from './pages/AdminTransactions';
+import AdminBlockedUsers from './pages/AdminBlockedUsers';
 import PrivateRoute from './components/PrivateRoute';
 import AdminRoute from './components/AdminRoute';
 
@@ -85,6 +86,14 @@ function App() {
                 element={
                   <AdminRoute>
                     <AdminTransactions />
+                  </AdminRoute>
+                }
+              />
+              <Route
+                path="/admin/blocked-users"
+                element={
+                  <AdminRoute>
+                    <AdminBlockedUsers />
                   </AdminRoute>
                 }
               />
