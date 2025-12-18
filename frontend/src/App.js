@@ -15,6 +15,9 @@ import AdminDashboard from './pages/AdminDashboard';
 import AdminUsers from './pages/AdminUsers';
 import AdminTransactions from './pages/AdminTransactions';
 import AdminBlockedUsers from './pages/AdminBlockedUsers';
+import AdminFraudWebsites from './pages/AdminFraudWebsites';
+import PaymentGateway from './pages/PaymentGateway';
+import TestMerchant from './pages/TestMerchant';
 import PrivateRoute from './components/PrivateRoute';
 import AdminRoute from './components/AdminRoute';
 
@@ -62,6 +65,8 @@ function App() {
                   </PrivateRoute>
                 }
               />
+              <Route path="/payment/:sessionId" element={<PaymentGateway />} />
+              <Route path="/test-merchant" element={<TestMerchant />} />
               
               {/* Admin Routes */}
               <Route path="/admin/login" element={<AdminLogin />} />
@@ -94,6 +99,14 @@ function App() {
                 element={
                   <AdminRoute>
                     <AdminBlockedUsers />
+                  </AdminRoute>
+                }
+              />
+              <Route
+                path="/admin/fraud-websites"
+                element={
+                  <AdminRoute>
+                    <AdminFraudWebsites />
                   </AdminRoute>
                 }
               />

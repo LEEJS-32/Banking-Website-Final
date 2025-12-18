@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Super Deals Store - FRAUD SITE</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      max-width: 800px;
+      width: 100%;
+    }
+    .store-header {
+      background: white;
+      padding: 30px;
+      border-radius: 15px 15px 0 0;
+      text-align: center;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+    }
+    .store-header h1 {
+      color: #ff4b2b;
+      font-size: 2.5em;
+      margin-bottom: 10px;
+    }
+    .badge {
+      display: inline-block;
+      background: #ef4444;
+      color: white;
+      padding: 5px 15px;
+      border-radius: 20px;
+      font-size: 0.85em;
+      font-weight: bold;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+    .product-section {
+      background: white;
+      padding: 40px;
+      border-radius: 0 0 15px 15px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+    }
+    .product-card {
+      border: 2px solid #fee2e2;
+      border-radius: 12px;
+      padding: 25px;
+      margin-bottom: 20px;
+      background: #fef2f2;
+    }
+    .product-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+    .product-name {
+      font-size: 1.5em;
+      font-weight: bold;
+      color: #1f2937;
+    }
+    .product-price {
+      font-size: 1.8em;
+      font-weight: bold;
+      color: #ff4b2b;
+    }
+    .old-price {
+      text-decoration: line-through;
+      color: #9ca3af;
+      font-size: 0.7em;
+      display: block;
+    }
+    .product-description {
+      color: #6b7280;
+      margin-bottom: 20px;
+      line-height: 1.6;
+    }
+    .checkout-btn {
+      width: 100%;
+      background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%);
+      color: white;
+      border: none;
+      padding: 18px 30px;
+      font-size: 1.1em;
+      font-weight: bold;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      animation: glow 2s infinite;
+    }
+    @keyframes glow {
+      0%, 100% { box-shadow: 0 0 20px rgba(255, 75, 43, 0.5); }
+      50% { box-shadow: 0 0 30px rgba(255, 75, 43, 0.8); }
+    }
+    .checkout-btn:hover {
+      transform: scale(1.02);
+    }
+    .warning-box {
+      background: #fef2f2;
+      padding: 20px;
+      border-radius: 10px;
+      margin-top: 20px;
+      border: 2px solid #ef4444;
+    }
+    .warning-box h3 {
+      color: #991b1b;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .warning-box p {
+      color: #991b1b;
+      line-height: 1.6;
+      font-size: 0.95em;
+    }
+    .fake-urgency {
+      background: #fef3c7;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      border-left: 4px solid #f59e0b;
+      color: #92400e;
+      font-weight: bold;
+    }
+    .config-section {
+      background: #fef3c7;
+      padding: 20px;
+      border-radius: 10px;
+      margin-top: 20px;
+      border: 2px solid #fbbf24;
+    }
+    .config-section h4 {
+      color: #92400e;
+      margin-bottom: 10px;
+    }
+    .config-input {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid #fbbf24;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      font-size: 0.9em;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="store-header">
+      <h1>🎯 Super Deals Store</h1>
+      <span class="badge">⚠️ FRAUD WEBSITE</span>
+      <p style="margin-top: 15px; color: #6b7280;">Demo Fraudulent Merchant (Testing Only)</p>
+    </div>
+    
+    <div class="product-section">
+      <div class="fake-urgency">
+        ⏰ HURRY! Only 2 items left! Offer ends in 5 minutes!
+      </div>
+
+      <div class="product-card">
+        <div class="product-header">
+          <div class="product-name">iPhone 15 Pro Max (Brand New)</div>
+          <div class="product-price">
+            <span class="old-price">RM5,999</span>
+            RM299!
+          </div>
+        </div>
+        <div class="product-description">
+          🔥 UNBELIEVABLE DEAL! Brand new iPhone 15 Pro Max for only RM299! Limited stock! 
+          This price is too good to be true because... well, it is. This is a demo fraud website 
+          designed to test SecureBank's payment gateway fraud detection system.
+        </div>
+        
+        <form id="checkoutForm" method="POST">
+          <input type="hidden" name="merchantUrl" value="https://scamwebsite.com">
+          <input type="hidden" name="merchantName" value="Super Deals Store">
+          <input type="hidden" name="amount" value="299">
+          <input type="hidden" name="orderId" id="orderId" value="">
+          <input type="hidden" name="description" value="iPhone 15 Pro Max (Fraudulent Listing)">
+          <input type="hidden" name="returnUrl" id="returnUrl" value="">
+          
+          <button type="submit" class="checkout-btn">
+            <span>💳</span>
+            <span>BUY NOW - LIMITED TIME!</span>
+          </button>
+        </form>
+      </div>
+
+      <div class="warning-box">
+        <h3>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+          </svg>
+          This is a DEMO Fraud Website
+        </h3>
+        <p>
+          This website represents a <strong>fraudulent merchant</strong> for testing purposes. 
+          When you attempt to checkout:
+        </p>
+        <ul style="margin-left: 20px; margin-top: 10px;">
+          <li>You'll be redirected to SecureBank Payment Gateway</li>
+          <li>The gateway will extract domain: <code>scamwebsite.com</code></li>
+          <li>It will check against the fraud website blacklist</li>
+          <li><strong>Payment will be BLOCKED</strong> with a fraud warning</li>
+          <li>Transaction will be recorded as "blocked" in admin panel</li>
+        </ul>
+        <p style="margin-top: 15px; font-weight: bold; color: #991b1b;">
+          🛡️ Make sure you've added "scamwebsite.com" to the fraud blacklist in the admin panel first!
+        </p>
+      </div>
+
+      <div class="config-section">
+        <h4>⚙️ Configuration (For Testing)</h4>
+        <label style="display: block; margin-bottom: 5px; color: #92400e; font-weight: 600;">Gateway API Endpoint:</label>
+        <input type="text" id="gatewayUrl" class="config-input" value="http://localhost:5000/api/gateway/initiate" placeholder="Enter your gateway URL">
+        <p style="font-size: 0.85em; color: #92400e; margin-top: 5px;">
+          💡 If using ngrok, update this to your ngrok URL (e.g., https://abc123.ngrok.io/api/gateway/initiate)
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Generate unique order ID
+    document.getElementById('orderId').value = 'FRAUD-ORD-' + Date.now();
+    document.getElementById('returnUrl').value = window.location.href;
+    
+    // Handle form submission
+    document.getElementById('checkoutForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      
+      const gatewayUrl = document.getElementById('gatewayUrl').value;
+      const formData = new FormData(this);
+      
+      // Show loading state
+      const btn = this.querySelector('.checkout-btn');
+      btn.innerHTML = '<span>Processing...</span>';
+      btn.disabled = true;
+      
+      // Send to payment gateway
+      fetch(gatewayUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          merchantUrl: formData.get('merchantUrl'),
+          merchantName: formData.get('merchantName'),
+          amount: formData.get('amount'),
+          orderId: formData.get('orderId'),
+          description: formData.get('description'),
+          returnUrl: formData.get('returnUrl')
+        })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success && data.paymentUrl) {
+          // Redirect to payment gateway (where fraud detection will occur)
+          window.location.href = data.paymentUrl;
+        } else {
+          alert('Error: ' + (data.message || 'Failed to initiate payment'));
+          btn.innerHTML = '<span>💳</span><span>BUY NOW - LIMITED TIME!</span>';
+          btn.disabled = false;
+        }
+      })
+      .catch(error => {
+        alert('Error connecting to payment gateway: ' + error.message);
+        btn.innerHTML = '<span>💳</span><span>BUY NOW - LIMITED TIME!</span>';
+        btn.disabled = false;
+      });
+    });
+  </script>
+</body>
+</html>

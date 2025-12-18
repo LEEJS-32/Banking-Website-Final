@@ -8,7 +8,7 @@ const transactionSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['deposit', 'withdrawal', 'transfer'],
+    enum: ['deposit', 'withdrawal', 'transfer', 'payment'],
     required: true,
   },
   amount: {
@@ -31,11 +31,46 @@ const transactionSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'completed', 'failed', 'blocked'],
+    enum: ['pending', 'completed', 'failed', 'blocked', 'expired'],
     default: 'completed',
   },
   blockReason: {
     type: String,
+  },
+  // Payment Gateway fields
+  merchantUrl: {
+    type: String,
+  },
+  merchantName: {
+    type: String,
+  },
+  merchantDomain: {
+    type: String,
+  },
+  orderId: {
+    type: String,
+  },
+  sessionId: {
+    type: String,
+  },
+  fraudWebsiteDetection: {
+    detected: {
+      type: Boolean,
+      default: false,
+    },
+    domain: {
+      type: String,
+    },
+    merchantName: {
+      type: String,
+    },
+    reason: {
+      type: String,
+    },
+    riskLevel: {
+      type: String,
+      enum: ['low', 'medium', 'high', 'critical'],
+    },
   },
   fraudDetection: {
     checked: {
@@ -68,6 +103,23 @@ const transactionSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  expiresAt: {
+    type: Date,
+  },
+  completedAt: {
+    type: Date,
+  },
 });
+
+// IMPORTANT:
+// Payment gateway sessions must map to exactly one Transaction.
+// We manage the unique index manually at startup after deduping legacy data.
+transactionSchema.set('autoIndex', false);
+
+// Index for pending transaction expiry
+transactionSchema.index({ status: 1, expiresAt: 1 });
+
+// Unique per payment session (sparse so non-gateway transactions are unaffected)
+transactionSchema.index({ sessionId: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model('Transaction', transactionSchema);
