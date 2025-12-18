@@ -76,6 +76,14 @@ const AdminTransactions = () => {
       .reduce((sum, t) => sum + Math.abs(t.amount), 0);
   };
 
+  const getFraudWebsiteBlockCount = () => {
+    return transactions.filter(t => t.fraudWebsiteDetection?.detected).length;
+  };
+
+  const getRateLimitBlockCount = () => {
+    return transactions.filter(t => t.status === 'blocked' && t.blockReason && !t.fraudWebsiteDetection?.detected).length;
+  };
+
   const getRiskLevelColor = (riskLevel) => {
     switch (riskLevel) {
       case 'high': return 'text-red-600 bg-red-100';
@@ -129,6 +137,7 @@ const AdminTransactions = () => {
               <option value="">All Status</option>
               <option value="completed">Completed</option>
               <option value="pending">Pending</option>
+              <option value="expired">Expired</option>
               <option value="failed">Failed</option>
               <option value="blocked">Blocked</option>
             </select>
@@ -145,6 +154,7 @@ const AdminTransactions = () => {
               <option value="deposit">Deposit</option>
               <option value="withdrawal">Withdrawal</option>
               <option value="transfer">Transfer</option>
+              <option value="payment">Payment</option>
             </select>
           </div>
           <div>
@@ -189,22 +199,26 @@ const AdminTransactions = () => {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow p-6 text-white">
           <div className="text-sm font-medium opacity-90">Total Transactions</div>
           <div className="mt-2 text-3xl font-bold">{transactions.length}</div>
         </div>
         <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow p-6 text-white">
           <div className="text-sm font-medium opacity-90">Total Volume</div>
-          <div className="mt-2 text-3xl font-bold">£{getTotalAmount().toFixed(2)}</div>
+          <div className="mt-2 text-3xl font-bold">RM{getTotalAmount().toFixed(2)}</div>
         </div>
         <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-lg shadow p-6 text-white">
-          <div className="text-sm font-medium opacity-90">Fraud Detected</div>
+          <div className="text-sm font-medium opacity-90">ML Fraud Detected</div>
           <div className="mt-2 text-3xl font-bold">{getFraudCount()}</div>
         </div>
+        <div className="bg-gradient-to-br from-red-700 to-red-800 rounded-lg shadow p-6 text-white">
+          <div className="text-sm font-medium opacity-90">🚫 Fraud Sites</div>
+          <div className="mt-2 text-3xl font-bold">{getFraudWebsiteBlockCount()}</div>
+        </div>
         <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg shadow p-6 text-white">
-          <div className="text-sm font-medium opacity-90">Blocked Amount</div>
-          <div className="mt-2 text-3xl font-bold">£{getBlockedAmount().toFixed(2)}</div>
+          <div className="text-sm font-medium opacity-90">⏱️ Rate Limited</div>
+          <div className="mt-2 text-3xl font-bold">{getRateLimitBlockCount()}</div>
         </div>
       </div>
 
@@ -253,19 +267,30 @@ const AdminTransactions = () => {
                       <div className="text-sm text-gray-500">{transaction.userId?.accountNumber}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm capitalize text-gray-900">{transaction.type}</span>
+                      <div className="flex items-center">
+                        <span className="text-sm capitalize text-gray-900">{transaction.type}</span>
+                        {transaction.type === 'payment' && (
+                          <span className="ml-2 px-2 py-1 text-xs font-semibold bg-purple-100 text-purple-800 rounded">
+                            GATEWAY
+                          </span>
+                        )}
+                      </div>
+                      {transaction.merchantName && (
+                        <div className="text-xs text-gray-500 mt-1">{transaction.merchantName}</div>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`text-sm font-medium ${
                         transaction.amount >= 0 ? 'text-green-600' : 'text-red-600'
                       }`}>
-                        £{Math.abs(transaction.amount).toFixed(2)}
+                        RM{Math.abs(transaction.amount).toFixed(2)}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
                         transaction.status === 'completed' ? 'bg-green-100 text-green-800' :
                         transaction.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                        transaction.status === 'expired' ? 'bg-gray-100 text-gray-800' :
                         transaction.status === 'failed' ? 'bg-red-100 text-red-800' :
                         transaction.status === 'blocked' ? 'bg-red-100 text-red-800' :
                         'bg-gray-100 text-gray-800'
@@ -274,7 +299,16 @@ const AdminTransactions = () => {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      {transaction.status === 'blocked' && transaction.blockReason ? (
+                      {transaction.fraudWebsiteDetection?.detected ? (
+                        <div className="space-y-1">
+                          <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-600 text-white">
+                            🚫 FRAUD SITE
+                          </span>
+                          <div className="text-xs text-red-600 font-medium">
+                            {transaction.fraudWebsiteDetection.riskLevel?.toUpperCase()}
+                          </div>
+                        </div>
+                      ) : transaction.status === 'blocked' && transaction.blockReason ? (
                         <div className="space-y-1">
                           <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-orange-100 text-orange-800">
                             ⏱️ RATE LIMITED
@@ -307,17 +341,18 @@ const AdminTransactions = () => {
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {transaction.status === 'blocked' && transaction.blockReason ? (
+                      {(transaction.fraudWebsiteDetection?.detected || 
+                        (transaction.status === 'blocked' && transaction.blockReason) || 
+                        transaction.fraudDetection?.isFraud) && (
                         <button
                           onClick={() => setSelectedTransaction(transaction)}
-                          className="text-orange-600 hover:text-orange-900 font-medium"
-                        >
-                          View Reason
-                        </button>
-                      ) : transaction.fraudDetection?.isFraud && (
-                        <button
-                          onClick={() => setSelectedTransaction(transaction)}
-                          className="text-primary-600 hover:text-primary-900 font-medium"
+                          className={`font-medium ${
+                            transaction.fraudWebsiteDetection?.detected 
+                              ? 'text-red-600 hover:text-red-900'
+                              : transaction.blockReason
+                              ? 'text-orange-600 hover:text-orange-900'
+                              : 'text-primary-600 hover:text-primary-900'
+                          }`}
                         >
                           View Details
                         </button>
@@ -339,7 +374,11 @@ const AdminTransactions = () => {
               <div className="flex justify-between items-start">
                 <div>
                   <h3 className="text-xl font-bold text-gray-900">
-                    {selectedTransaction.blockReason ? 'Rate Limit Block Details' : 'Fraud Detection Details'}
+                    {selectedTransaction.fraudWebsiteDetection?.detected 
+                      ? 'Fraud Website Block Details'
+                      : selectedTransaction.blockReason 
+                      ? 'Rate Limit Block Details' 
+                      : 'Fraud Detection Details'}
                   </h3>
                   <p className="text-sm text-gray-500 mt-1">Transaction ID: {selectedTransaction._id}</p>
                 </div>
@@ -363,7 +402,7 @@ const AdminTransactions = () => {
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-500">Amount</p>
-                  <p className="mt-1 text-sm font-semibold text-gray-900">£{Math.abs(selectedTransaction.amount).toFixed(2)}</p>
+                  <p className="mt-1 text-sm font-semibold text-gray-900">RM{Math.abs(selectedTransaction.amount).toFixed(2)}</p>
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-500">User</p>
@@ -377,6 +416,7 @@ const AdminTransactions = () => {
                   <span className={`mt-1 inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                     selectedTransaction.status === 'completed' ? 'bg-green-100 text-green-800' :
                     selectedTransaction.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                    selectedTransaction.status === 'expired' ? 'bg-gray-100 text-gray-800' :
                     'bg-red-100 text-red-800'
                   }`}>
                     {selectedTransaction.status.toUpperCase()}
@@ -384,8 +424,78 @@ const AdminTransactions = () => {
                 </div>
               </div>
 
+              {/* Fraud Website Block Info */}
+              {selectedTransaction.fraudWebsiteDetection?.detected && (
+                <div className="border-t pt-4">
+                  <h4 className="font-semibold text-gray-900 mb-3">Fraud Website Detection</h4>
+                  <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4">
+                    <div className="flex items-start">
+                      <svg className="w-8 h-8 text-red-600 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      <div className="flex-1">
+                        <p className="font-bold text-red-900 text-lg">⚠️ Fraudulent Merchant Detected</p>
+                        <div className="mt-3 space-y-2">
+                          <div className="flex justify-between">
+                            <span className="text-sm font-medium text-red-800">Merchant Name:</span>
+                            <span className="text-sm text-red-900 font-semibold">{selectedTransaction.fraudWebsiteDetection.merchantName}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm font-medium text-red-800">Domain:</span>
+                            <span className="text-sm text-red-900 font-mono">{selectedTransaction.fraudWebsiteDetection.domain}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm font-medium text-red-800">Risk Level:</span>
+                            <span className={`text-sm font-bold uppercase ${
+                              selectedTransaction.fraudWebsiteDetection.riskLevel === 'critical' ? 'text-red-700' :
+                              selectedTransaction.fraudWebsiteDetection.riskLevel === 'high' ? 'text-red-600' :
+                              'text-orange-600'
+                            }`}>
+                              {selectedTransaction.fraudWebsiteDetection.riskLevel}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="mt-4 p-3 bg-red-100 rounded">
+                          <p className="text-sm font-medium text-red-900">Reason:</p>
+                          <p className="mt-1 text-sm text-red-800">{selectedTransaction.fraudWebsiteDetection.reason}</p>
+                        </div>
+                        <p className="mt-3 text-xs text-red-700">
+                          This payment was automatically blocked by the payment gateway because the merchant domain 
+                          is listed in the fraud website blacklist. The transaction was prevented before any money transfer occurred.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Payment Gateway Details */}
+                  {selectedTransaction.merchantUrl && (
+                    <div className="mt-4 bg-gray-50 border border-gray-200 rounded-lg p-4">
+                      <h5 className="font-semibold text-gray-900 mb-2">Payment Gateway Transaction</h5>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Original URL:</span>
+                          <span className="text-gray-900 font-mono text-xs break-all max-w-xs text-right">{selectedTransaction.merchantUrl}</span>
+                        </div>
+                        {selectedTransaction.orderId && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Order ID:</span>
+                            <span className="text-gray-900 font-mono">{selectedTransaction.orderId}</span>
+                          </div>
+                        )}
+                        {selectedTransaction.sessionId && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Session ID:</span>
+                            <span className="text-gray-900 font-mono text-xs">{selectedTransaction.sessionId}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Rate Limit Block Info */}
-              {selectedTransaction.blockReason && (
+              {selectedTransaction.blockReason && !selectedTransaction.fraudWebsiteDetection?.detected && (
                 <div className="border-t pt-4">
                   <h4 className="font-semibold text-gray-900 mb-3">Rate Limit Block Information</h4>
                   <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
@@ -407,7 +517,7 @@ const AdminTransactions = () => {
               )}
 
               {/* Fraud Risk Score */}
-              {selectedTransaction.fraudDetection && !selectedTransaction.blockReason && (
+              {selectedTransaction.fraudDetection && !selectedTransaction.blockReason && !selectedTransaction.fraudWebsiteDetection?.detected && (
                 <>
                   <div className="border-t pt-4">
                     <h4 className="font-semibold text-gray-900 mb-3">Fraud Risk Assessment</h4>

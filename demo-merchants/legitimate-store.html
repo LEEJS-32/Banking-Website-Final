@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Legitimate Store - Demo Merchant</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      max-width: 800px;
+      width: 100%;
+    }
+    .store-header {
+      background: white;
+      padding: 30px;
+      border-radius: 15px 15px 0 0;
+      text-align: center;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+    }
+    .store-header h1 {
+      color: #667eea;
+      font-size: 2.5em;
+      margin-bottom: 10px;
+    }
+    .badge {
+      display: inline-block;
+      background: #10b981;
+      color: white;
+      padding: 5px 15px;
+      border-radius: 20px;
+      font-size: 0.85em;
+      font-weight: bold;
+    }
+    .product-section {
+      background: white;
+      padding: 40px;
+      border-radius: 0 0 15px 15px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+    }
+    .product-card {
+      border: 2px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 25px;
+      margin-bottom: 20px;
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+    .product-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 15px 30px rgba(0,0,0,0.1);
+    }
+    .product-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+    .product-name {
+      font-size: 1.5em;
+      font-weight: bold;
+      color: #1f2937;
+    }
+    .product-price {
+      font-size: 1.8em;
+      font-weight: bold;
+      color: #667eea;
+    }
+    .product-description {
+      color: #6b7280;
+      margin-bottom: 20px;
+      line-height: 1.6;
+    }
+    .checkout-btn {
+      width: 100%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 18px 30px;
+      font-size: 1.1em;
+      font-weight: bold;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+    .checkout-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+    }
+    .checkout-btn:active {
+      transform: translateY(0);
+    }
+    .info-box {
+      background: #f3f4f6;
+      padding: 20px;
+      border-radius: 10px;
+      margin-top: 20px;
+      border-left: 4px solid #667eea;
+    }
+    .info-box h3 {
+      color: #1f2937;
+      margin-bottom: 10px;
+    }
+    .info-box p {
+      color: #6b7280;
+      line-height: 1.6;
+      font-size: 0.95em;
+    }
+    .secure-badge {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      justify-content: center;
+      margin-top: 15px;
+      color: #10b981;
+      font-weight: 600;
+    }
+    .config-section {
+      background: #fef3c7;
+      padding: 20px;
+      border-radius: 10px;
+      margin-top: 20px;
+      border: 2px solid #fbbf24;
+    }
+    .config-section h4 {
+      color: #92400e;
+      margin-bottom: 10px;
+    }
+    .config-input {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid #fbbf24;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      font-size: 0.9em;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="store-header">
+      <h1>🛍️ Legitimate Store</h1>
+      <span class="badge">✓ SAFE MERCHANT</span>
+      <p style="margin-top: 15px; color: #6b7280;">Demo External Merchant Website</p>
+    </div>
+    
+    <div class="product-section">
+      <div class="product-card">
+        <div class="product-header">
+          <div class="product-name">Premium Product Bundle</div>
+          <div class="product-price">RM150.00</div>
+        </div>
+        <div class="product-description">
+          High-quality product bundle including multiple items. This is a demo product from a legitimate merchant 
+          that integrates with SecureBank Payment Gateway. When you click checkout, you'll be securely redirected 
+          to the payment gateway for processing.
+        </div>
+        
+        <form id="checkoutForm" method="POST">
+          <input type="hidden" name="merchantUrl" value="https://legitimate-store.demo">
+          <input type="hidden" name="merchantName" value="Legitimate Store">
+          <input type="hidden" name="amount" value="150">
+          <input type="hidden" name="orderId" id="orderId" value="">
+          <input type="hidden" name="description" value="Premium Product Bundle">
+          <input type="hidden" name="returnUrl" id="returnUrl" value="">
+          
+          <button type="submit" class="checkout-btn">
+            <span>🔒</span>
+            <span>Proceed to Secure Checkout</span>
+          </button>
+        </form>
+        
+        <div class="secure-badge">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+          </svg>
+          <span>Secured by SecureBank Payment Gateway</span>
+        </div>
+      </div>
+
+      <div class="info-box">
+        <h3>ℹ️ About This Demo</h3>
+        <p>
+          This is a <strong>demo legitimate merchant</strong> website. It represents a safe, verified merchant 
+          that uses SecureBank Payment Gateway. When you checkout:
+        </p>
+        <ul style="margin-left: 20px; margin-top: 10px; color: #6b7280;">
+          <li>You'll be redirected to SecureBank Payment Gateway</li>
+          <li>The gateway will check this merchant's domain</li>
+          <li>Since this is a legitimate merchant, payment will be allowed</li>
+          <li>You'll see a secure payment confirmation page</li>
+        </ul>
+      </div>
+
+      <div class="config-section">
+        <h4>⚙️ Configuration (For Testing)</h4>
+        <label style="display: block; margin-bottom: 5px; color: #92400e; font-weight: 600;">Gateway API Endpoint:</label>
+        <input type="text" id="gatewayUrl" class="config-input" value="http://localhost:5000/api/gateway/initiate" placeholder="Enter your gateway URL">
+        <p style="font-size: 0.85em; color: #92400e; margin-top: 5px;">
+          💡 If using ngrok, update this to your ngrok URL (e.g., https://abc123.ngrok.io/api/gateway/initiate)
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Generate unique order ID
+    document.getElementById('orderId').value = 'ORD-' + Date.now();
+    document.getElementById('returnUrl').value = window.location.href;
+    
+    // Handle form submission
+    document.getElementById('checkoutForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      
+      const gatewayUrl = document.getElementById('gatewayUrl').value;
+      const formData = new FormData(this);
+      
+      // Show loading state
+      const btn = this.querySelector('.checkout-btn');
+      btn.innerHTML = '<span>Processing...</span>';
+      btn.disabled = true;
+      
+      // Send to payment gateway
+      fetch(gatewayUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          merchantUrl: formData.get('merchantUrl'),
+          merchantName: formData.get('merchantName'),
+          amount: formData.get('amount'),
+          orderId: formData.get('orderId'),
+          description: formData.get('description'),
+          returnUrl: formData.get('returnUrl')
+        })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success && data.paymentUrl) {
+          // Redirect to payment gateway
+          window.location.href = data.paymentUrl;
+        } else {
+          alert('Error: ' + (data.message || 'Failed to initiate payment'));
+          btn.innerHTML = '<span>🔒</span><span>Proceed to Secure Checkout</span>';
+          btn.disabled = false;
+        }
+      })
+      .catch(error => {
+        alert('Error connecting to payment gateway: ' + error.message);
+        btn.innerHTML = '<span>🔒</span><span>Proceed to Secure Checkout</span>';
+        btn.disabled = false;
+      });
+    });
+  </script>
+</body>
+</html>
