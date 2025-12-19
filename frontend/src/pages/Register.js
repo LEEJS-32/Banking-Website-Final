@@ -21,13 +21,34 @@ const Register = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [icValidation, setIcValidation] = useState({ status: '', message: '', validating: false });
-  const [icImage, setIcImage] = useState(null);
-  const [icImagePreview, setIcImagePreview] = useState(null);
+  
+  // Front IC states
+  const [icFrontImage, setIcFrontImage] = useState(null);
+  const [icFrontPreview, setIcFrontPreview] = useState(null);
+  const [frontOcrProgress, setFrontOcrProgress] = useState(0);
+  const [isFrontProcessing, setIsFrontProcessing] = useState(false);
+  const [frontData, setFrontData] = useState(null);
+  
+  // Back IC states
+  const [icBackImage, setIcBackImage] = useState(null);
+  const [icBackPreview, setIcBackPreview] = useState(null);
+  const [backOcrProgress, setBackOcrProgress] = useState(0);
+  const [isBackProcessing, setIsBackProcessing] = useState(false);
+  const [backData, setBackData] = useState(null);
+  
+  // Verification states
+  const [icFullVerification, setIcFullVerification] = useState({ status: '', message: '', verified: false });
+  
+  // Debug states for raw OCR text
+  const [rawFrontOcrText, setRawFrontOcrText] = useState('');
+  const [rawBackOcrText, setRawBackOcrText] = useState('');
+  
   const [ocrProgress, setOcrProgress] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [autoFilledFields, setAutoFilledFields] = useState({ firstName: false, lastName: false, gender: false, dob: false });
+  const [autoFilledFields, setAutoFilledFields] = useState({ firstName: false, lastName: false, gender: false, dob: false, address: false });
   const [croppedPreview, setCroppedPreview] = useState(null);
-  const fileInputRef = useRef(null);
+  const fileInputFrontRef = useRef(null);
+  const fileInputBackRef = useRef(null);
   const { register } = useAuth();
   const navigate = useNavigate();
 
@@ -96,7 +117,7 @@ const Register = () => {
     }
   };
 
-  const handleImageUpload = (e) => {
+  const handleFrontImageUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
       // Validate file size (max 5MB)
@@ -111,13 +132,40 @@ const Register = () => {
         return;
       }
 
-      setIcImage(file);
+      setIcFrontImage(file);
       setError('');
       
       // Create preview
       const reader = new FileReader();
       reader.onloadend = () => {
-        setIcImagePreview(reader.result);
+        setIcFrontPreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleBackImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setError('Image size must be less than 5MB');
+        return;
+      }
+
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        setError('Please upload a valid image file');
+        return;
+      }
+
+      setIcBackImage(file);
+      setError('');
+      
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setIcBackPreview(reader.result);
       };
       reader.readAsDataURL(file);
     }
@@ -232,6 +280,60 @@ const Register = () => {
     return { icNumber, firstName, lastName };
   };
 
+  const extractBackData = (text) => {
+    if (!text) return { icNumber: null, address: null };
+
+    let icNumber = null;
+    let address = null;
+
+    // Extract IC number from back
+    const cleanText = text.replace(/[\s\-\.]/g, '');
+    const icPattern = /(\d{12})/g;
+    const icMatches = cleanText.match(icPattern);
+    
+    if (icMatches && icMatches.length > 0) {
+      icNumber = icMatches[0];
+    }
+
+    // Extract address (look for ALAMAT keyword)
+    const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+    
+    let addressLines = [];
+    let foundAddressKeyword = false;
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      
+      // Look for address keywords
+      if (/ALAMAT|ADDRESS/i.test(line)) {
+        foundAddressKeyword = true;
+        const afterKeyword = line.split(/ALAMAT|ADDRESS/i)[1];
+        if (afterKeyword && afterKeyword.trim().length > 3) {
+          addressLines.push(afterKeyword.trim());
+        }
+        continue;
+      }
+      
+      // Collect address lines after keyword
+      if (foundAddressKeyword && addressLines.length < 4) {
+        const hasLetters = /[A-Z]/i.test(line);
+        const isReasonableLength = line.length >= 3 && line.length <= 100;
+        const hasAddressKeywords = /(NO\.|LOT|JALAN|JLN|TAMAN|TMN|KAMPUNG|KG|BANDAR)/i.test(line);
+        const isNotKeyword = !/(WARGANEGARA|NATIONALITY|THUMBPRINT)/i.test(line);
+        
+        if (isNotKeyword && hasLetters && (isReasonableLength || hasAddressKeywords)) {
+          addressLines.push(line);
+        }
+      }
+    }
+    
+    if (addressLines.length > 0) {
+      address = addressLines.join(', ').toUpperCase();
+    }
+
+    return { icNumber, address };
+  };
+
   const extractNameFromText = (text) => {
     // Extract name from cropped IC area text
     // Since we cropped just the name area, the text should mostly be the name
@@ -313,20 +415,20 @@ const Register = () => {
     return { firstName, lastName };
   };
 
-  const processICImage = async () => {
-    if (!icImage) {
-      setError('Please upload an IC image first');
+  const processFrontIC = async () => {
+    if (!icFrontImage) {
+      setError('Please upload front IC image first');
       return;
     }
 
-    setIsProcessing(true);
-    setOcrProgress(0);
+    setIsFrontProcessing(true);
+    setFrontOcrProgress(0);
     setError('');
 
     try {
       // Create image element to get dimensions and crop
       const img = new Image();
-      const imageUrl = URL.createObjectURL(icImage);
+      const imageUrl = URL.createObjectURL(icFrontImage);
       
       await new Promise((resolve, reject) => {
         img.onload = resolve;
@@ -374,7 +476,7 @@ const Register = () => {
         {
           logger: (m) => {
             if (m.status === 'recognizing text') {
-              setOcrProgress(Math.round(m.progress * 50)); // First 50% for name
+              setFrontOcrProgress(Math.round(m.progress * 50)); // First 50% for name
             }
           }
         }
@@ -384,14 +486,14 @@ const Register = () => {
       console.log('Extracted name text:', nameText);
 
       // Now OCR the full IC for IC number
-      setOcrProgress(50);
+      setFrontOcrProgress(50);
       const fullResult = await Tesseract.recognize(
-        icImage,
+        icFrontImage,
         'eng',
         {
           logger: (m) => {
             if (m.status === 'recognizing text') {
-              setOcrProgress(50 + Math.round(m.progress * 50)); // Second 50% for IC number
+              setFrontOcrProgress(50 + Math.round(m.progress * 50)); // Second 50% for IC number
             }
           }
         }
@@ -399,6 +501,9 @@ const Register = () => {
 
       const fullText = fullResult.data.text;
       console.log('Extracted full text:', fullText);
+      
+      // Store raw OCR text for debugging
+      setRawFrontOcrText(fullText);
 
       // Extract IC number from full text
       const extractedData = extractDataFromText(fullText);
@@ -410,58 +515,216 @@ const Register = () => {
       console.log('Extracted name data:', nameData);
 
       if (extractedData.icNumber) {
-        // Update form with extracted data
+        // Store front data (IC number only - name from database later)
+        const frontICData = {
+          icNumber: extractedData.icNumber
+        };
+        setFrontData(frontICData);
+        
+        // Update form with IC number only
         setFormData(prev => ({
           ...prev,
-          icNumber: extractedData.icNumber,
-          firstName: nameData.firstName || prev.firstName,
-          lastName: nameData.lastName || prev.lastName
+          icNumber: extractedData.icNumber
         }));
         
-        // Mark auto-filled fields
-        setAutoFilledFields(prev => ({
-          ...prev,
-          firstName: !!nameData.firstName,
-          lastName: !!nameData.lastName
-        }));
-        
-        // Auto-verify the extracted IC
-        await verifyIC(extractedData.icNumber);
-        
-        let successMessage = '✓ IC extracted and verified successfully';
-        if (nameData.firstName && nameData.lastName) {
-          successMessage = '✓ IC and name extracted successfully';
+        // Now verify with database and get ALL data from there
+        try {
+          const response = await axios.post('http://localhost:5000/api/auth/verify-ic-database', { 
+            icNumber: extractedData.icNumber 
+          });
+          
+          if (response.data.verified && response.data.data) {
+            // Auto-fill EVERYTHING from database
+            setFormData(prev => ({
+              ...prev,
+              icNumber: response.data.data.icNumber,
+              firstName: response.data.data.fullName.split(' ')[0] || prev.firstName,
+              lastName: response.data.data.fullName.split(' ').slice(1).join(' ') || prev.lastName,
+              gender: response.data.data.gender,
+              dateOfBirth: response.data.data.dateOfBirth
+            }));
+            
+            setAutoFilledFields({
+              firstName: true,
+              lastName: true,
+              gender: true,
+              dob: true
+            });
+            
+            setIcValidation({
+              status: 'success',
+              message: '✓ IC verified with database! All data auto-filled.',
+              validating: false
+            });
+          }
+        } catch (error) {
+          // If database verification fails, just show IC extracted
+          setIcValidation({
+            status: 'success',
+            message: '✓ IC number extracted. Click "Verify IC with Database" to complete.',
+            validating: false
+          });
         }
-        
-        setIcValidation({
-          status: 'success',
-          message: successMessage,
-          validating: false
-        });
       } else {
-        setError('Could not extract IC number from image. Please enter manually or upload a clearer image.');
+        setError('Could not extract IC number from front image. Please try again.');
+      }
+    } catch (error) {
+      console.error('Front IC OCR error:', error);
+      setError('Failed to process front IC. Please try again.');
+    } finally {
+      setIsFrontProcessing(false);
+      setFrontOcrProgress(0);
+    }
+  };
+
+  const processBackIC = async () => {
+    if (!icBackImage) {
+      setError('Please upload back IC image first');
+      return;
+    }
+
+    setIsBackProcessing(true);
+    setBackOcrProgress(0);
+    setError('');
+
+    try {
+      const result = await Tesseract.recognize(
+        icBackImage,
+        'eng',
+        {
+          logger: (m) => {
+            if (m.status === 'recognizing text') {
+              setBackOcrProgress(Math.round(m.progress * 100));
+            }
+          }
+        }
+      );
+
+      const text = result.data.text;
+      console.log('Extracted back IC text:', text);
+      
+      // Store raw OCR text for debugging
+      setRawBackOcrText(text);
+
+      const backICData = extractBackData(text);
+      console.log('Extracted back data:', backICData);
+
+      if (backICData.icNumber) {
+        setBackData(backICData);
+        
+        // Check if IC matches front IC
+        if (frontData && frontData.icNumber && backICData.icNumber === frontData.icNumber) {
+          setIcValidation({
+            status: 'success',
+            message: '✓ Back IC verified! IC numbers match. You can now register.',
+            validating: false
+          });
+        } else {
+          setIcValidation({
+            status: 'success',
+            message: '✓ Back IC scanned. IC number extracted.',
+            validating: false
+          });
+        }
+      } else {
+        // Even if we can't extract IC from back, it's okay - front IC is enough
+        setBackData({ icNumber: frontData?.icNumber || '' });
         setIcValidation({
-          status: 'error',
-          message: 'IC number not found in image',
+          status: 'warning',
+          message: '⚠️ Could not extract IC from back image, but front IC is sufficient.',
           validating: false
         });
       }
     } catch (error) {
-      console.error('OCR error:', error);
-      setError('Failed to process image. Please try again or enter IC manually.');
+      console.error('Back IC OCR error:', error);
+      setError('Failed to process back IC. Please try again.');
     } finally {
-      setIsProcessing(false);
-      setOcrProgress(0);
+      setIsBackProcessing(false);
+      setBackOcrProgress(0);
     }
   };
 
-  const clearImage = () => {
-    setIcImage(null);
-    setIcImagePreview(null);
-    setOcrProgress(0);
+  const verifyCompleteIC = async () => {
+    if (!frontData || !frontData.icNumber) {
+      setError('Please scan front IC first or enter IC number manually');
+      return;
+    }
+
+    // Back IC is now optional
+    setIcFullVerification({ status: '', message: '', verified: false });
+    setError('');
+
+    try {
+      // Just verify with database using IC number - simpler approach
+      const response = await axios.post('http://localhost:5000/api/auth/verify-ic-database', {
+        icNumber: frontData.icNumber
+      });
+
+      if (response.data.verified) {
+        setIcFullVerification({
+          status: 'verified',
+          message: response.data.message,
+          verified: true,
+          data: response.data.data
+        });
+
+        // Auto-fill EVERYTHING from database (no OCR needed!)
+        if (response.data.data) {
+          const nameParts = response.data.data.fullName.split(' ');
+          setFormData(prev => ({
+            ...prev,
+            icNumber: response.data.data.icNumber,
+            firstName: nameParts[0] || prev.firstName,
+            lastName: nameParts.slice(1).join(' ') || prev.lastName,
+            gender: response.data.data.gender,
+            dateOfBirth: response.data.data.dateOfBirth
+          }));
+
+          setAutoFilledFields({
+            firstName: true,
+            lastName: true,
+            gender: true,
+            dob: true,
+            address: true
+          });
+        }
+
+        setIcValidation({
+          status: 'success',
+          message: '✓ IC fully verified with government database!',
+          validating: false
+        });
+      }
+    } catch (error) {
+      console.error('Complete verification error:', error);
+      const message = error.response?.data?.message || 'IC verification failed';
+      setIcFullVerification({
+        status: 'failed',
+        message: message,
+        verified: false
+      });
+      setError(message);
+    }
+  };
+
+  const clearFrontImage = () => {
+    setIcFrontImage(null);
+    setIcFrontPreview(null);
+    setFrontOcrProgress(0);
+    setFrontData(null);
     setCroppedPreview(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+    if (fileInputFrontRef.current) {
+      fileInputFrontRef.current.value = '';
+    }
+  };
+
+  const clearBackImage = () => {
+    setIcBackImage(null);
+    setIcBackPreview(null);
+    setBackOcrProgress(0);
+    setBackData(null);
+    if (fileInputBackRef.current) {
+      fileInputBackRef.current.value = '';
     }
   };
 
@@ -482,6 +745,15 @@ const Register = () => {
     if (icValidation.status === 'error') {
       setError('Please provide a valid Malaysian IC number');
       return;
+    }
+
+    // Check if IC is fully verified (optional but recommended)
+    if (frontData && backData && !icFullVerification.verified) {
+      const proceed = window.confirm(
+        'Your IC has been scanned but not fully verified against the database. ' +
+        'Would you like to proceed anyway? (Recommended: Click "Verify IC with Government Database" first)'
+      );
+      if (!proceed) return;
     }
 
     setLoading(true);
@@ -576,98 +848,263 @@ const Register = () => {
               />
             </div>
             
-            {/* IC Photo Upload Section */}
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 bg-gray-50">
-              <label className="block text-sm font-medium text-gray-700 mb-3">
-                📸 Upload Malaysian IC (MyKad) Photo
-              </label>
-              
-              {!icImagePreview ? (
-                <div>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                    className="hidden"
-                    id="ic-upload"
-                  />
-                  <label
-                    htmlFor="ic-upload"
-                    className="cursor-pointer flex flex-col items-center justify-center py-6 px-4 border-2 border-gray-300 border-dashed rounded-lg hover:border-primary-500 transition"
-                  >
-                    <svg className="w-12 h-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    <span className="text-sm text-gray-600">Click to upload IC photo</span>
-                    <span className="text-xs text-gray-500 mt-1">PNG, JPG, GIF up to 5MB</span>
-                  </label>
-                </div>
-              ) : (
-                <div>
-                  <div className="relative mb-3">
-                    <img 
-                      src={icImagePreview} 
-                      alt="IC Preview" 
-                      className="w-full rounded-lg border border-gray-300"
+            {/* eKYC IC Verification Section */}
+            <div className="border-2 border-blue-300 rounded-lg p-4 bg-blue-50">
+              <div className="flex items-center justify-between mb-3">
+                <label className="block text-sm font-medium text-gray-900">
+                  🔐 eKYC IC Verification (Simplified)
+                </label>
+                {icFullVerification.verified && (
+                  <span className="text-xs bg-green-500 text-white px-2 py-1 rounded-full">✓ Verified</span>
+                )}
+              </div>
+              <p className="text-xs text-gray-600 mb-4">
+                Upload your Malaysian IC (front is required, back is optional). We'll extract your IC number and verify it with the government database to auto-fill all your details.
+              </p>
+
+              {/* Front IC Upload */}
+              <div className="mb-4 border border-gray-300 rounded-lg p-3 bg-white">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  📸 Front IC (Name & IC Number Side)
+                </label>
+                
+                {!icFrontPreview ? (
+                  <div>
+                    <input
+                      ref={fileInputFrontRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFrontImageUpload}
+                      className="hidden"
+                      id="ic-front-upload"
                     />
-                    <button
-                      type="button"
-                      onClick={clearImage}
-                      className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                    <label
+                      htmlFor="ic-front-upload"
+                      className="cursor-pointer flex flex-col items-center justify-center py-4 px-4 border-2 border-gray-300 border-dashed rounded-lg hover:border-primary-500 transition"
                     >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      <svg className="w-10 h-10 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                       </svg>
-                    </button>
+                      <span className="text-sm text-gray-600">Click to upload front IC</span>
+                      <span className="text-xs text-gray-500 mt-1">PNG, JPG up to 5MB</span>
+                    </label>
                   </div>
-                  
-                  {croppedPreview && (
-                    <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded">
-                      <p className="text-xs font-medium text-blue-700 mb-2">🔍 Name Area Being Scanned:</p>
+                ) : (
+                  <div>
+                    <div className="relative mb-2">
                       <img 
-                        src={croppedPreview} 
-                        alt="Cropped Name Area" 
-                        className="w-full rounded border border-blue-300"
+                        src={icFrontPreview} 
+                        alt="Front IC Preview" 
+                        className="w-full rounded-lg border border-gray-300"
                       />
-                      <p className="text-xs text-blue-600 mt-1">This is the area OCR will read for the name</p>
+                      <button
+                        type="button"
+                        onClick={clearFrontImage}
+                        className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                      {frontData && (
+                        <span className="absolute top-2 left-2 bg-green-500 text-white text-xs px-2 py-1 rounded">✓ Scanned</span>
+                      )}
+                    </div>
+                    
+                    {isFrontProcessing ? (
+                      <div className="mb-2">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs text-gray-600">Processing...</span>
+                          <span className="text-xs font-medium text-primary-600">{frontOcrProgress}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-primary-600 h-2 rounded-full transition-all duration-300"
+                            style={{ width: `${frontOcrProgress}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    ) : !frontData && (
+                      <button
+                        type="button"
+                        onClick={processFrontIC}
+                        className="w-full bg-primary-600 text-white py-2 px-4 rounded-lg hover:bg-primary-700 transition text-sm font-medium"
+                      >
+                        🔍 Scan Front IC
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Back IC Upload */}
+              <div className="mb-4 border border-gray-300 rounded-lg p-3 bg-white">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  📸 Back IC (Address & Security Features Side)
+                </label>
+                
+                {!icBackPreview ? (
+                  <div>
+                    <input
+                      ref={fileInputBackRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleBackImageUpload}
+                      className="hidden"
+                      id="ic-back-upload"
+                    />
+                    <label
+                      htmlFor="ic-back-upload"
+                      className="cursor-pointer flex flex-col items-center justify-center py-4 px-4 border-2 border-gray-300 border-dashed rounded-lg hover:border-primary-500 transition"
+                    >
+                      <svg className="w-10 h-10 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <span className="text-sm text-gray-600">Click to upload back IC</span>
+                      <span className="text-xs text-gray-500 mt-1">PNG, JPG up to 5MB</span>
+                    </label>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="relative mb-2">
+                      <img 
+                        src={icBackPreview} 
+                        alt="Back IC Preview" 
+                        className="w-full rounded-lg border border-gray-300"
+                      />
+                      <button
+                        type="button"
+                        onClick={clearBackImage}
+                        className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                      {backData && (
+                        <span className="absolute top-2 left-2 bg-green-500 text-white text-xs px-2 py-1 rounded">✓ Scanned</span>
+                      )}
+                    </div>
+                    
+                    {isBackProcessing ? (
+                      <div className="mb-2">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs text-gray-600">Processing...</span>
+                          <span className="text-xs font-medium text-primary-600">{backOcrProgress}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-primary-600 h-2 rounded-full transition-all duration-300"
+                            style={{ width: `${backOcrProgress}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    ) : !backData && (
+                      <button
+                        type="button"
+                        onClick={processBackIC}
+                        className="w-full bg-primary-600 text-white py-2 px-4 rounded-lg hover:bg-primary-700 transition text-sm font-medium"
+                      >
+                        🔍 Scan Back IC
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Complete Verification Button - Only needs front IC */}
+              {frontData && !icFullVerification.verified && (
+                <button
+                  type="button"
+                  onClick={verifyCompleteIC}
+                  className="w-full bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 transition font-medium text-sm"
+                >
+                  ✓ Verify IC with Government Database
+                </button>
+              )}
+
+              {/* Verification Status */}
+              {icFullVerification.message && (
+                <div className={`mt-3 p-3 rounded-lg text-sm ${
+                  icFullVerification.verified 
+                    ? 'bg-green-100 border border-green-300 text-green-800' 
+                    : 'bg-red-100 border border-red-300 text-red-800'
+                }`}>
+                  {icFullVerification.message}
+                </div>
+              )}
+
+              {/* DEBUG: Show Extracted Data */}
+              {(frontData || backData) && (
+                <div className="mt-4 p-4 bg-yellow-50 border-2 border-yellow-400 rounded-lg">
+                  <p className="text-sm font-bold text-yellow-800 mb-3">🔍 DEBUG: Extracted Data (Remove Later)</p>
+                  <p className="text-xs text-yellow-700 mb-3">✨ <strong>New Approach:</strong> We only extract IC number from images, then get ALL data (name, address, etc.) from the database!</p>
+                  
+                  {frontData && (
+                    <div className="mb-3 p-3 bg-white rounded border border-yellow-200">
+                      <p className="text-xs font-semibold text-gray-700 mb-2">📄 Front IC - What We Extract:</p>
+                      <div className="text-xs space-y-1">
+                        <p><span className="font-medium">IC Number:</span> {frontData.icNumber || 'Not extracted'}</p>
+                        <p className="text-gray-500 italic">↑ That's all we need! Name comes from database →</p>
+                      </div>
                     </div>
                   )}
                   
-                  {isProcessing ? (
-                    <div className="mb-3">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm text-gray-600">Processing image...</span>
-                        <span className="text-sm font-medium text-primary-600">{ocrProgress}%</span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div 
-                          className="bg-primary-600 h-2 rounded-full transition-all duration-300"
-                          style={{ width: `${ocrProgress}%` }}
-                        ></div>
+                  {backData && (
+                    <div className="p-3 bg-white rounded border border-yellow-200">
+                      <p className="text-xs font-semibold text-gray-700 mb-2">📄 Back IC (Optional):</p>
+                      <div className="text-xs space-y-1">
+                        <p><span className="font-medium">IC Number:</span> {backData.icNumber || 'Optional - not required'}</p>
+                        <p className="text-gray-500 italic">Back IC is just for extra verification. Front IC is enough!</p>
                       </div>
                     </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={processICImage}
-                      className="w-full bg-primary-600 text-white py-2 px-4 rounded-lg hover:bg-primary-700 transition font-medium"
-                    >
-                      🔍 Scan & Extract IC Info
-                    </button>
+                  )}
+
+                  {/* RAW OCR TEXT */}
+                  {(rawFrontOcrText || rawBackOcrText) && (
+                    <div className="mt-3 p-3 bg-purple-50 rounded border border-purple-300">
+                      <p className="text-xs font-semibold text-purple-700 mb-2">📝 Raw OCR Text (What Tesseract Read):</p>
+                      
+                      {rawFrontOcrText && (
+                        <div className="mb-2">
+                          <p className="text-xs font-medium text-purple-600">Front IC:</p>
+                          <pre className="text-xs text-purple-800 whitespace-pre-wrap bg-white p-2 rounded border border-purple-200 mt-1 max-h-32 overflow-y-auto">{rawFrontOcrText}</pre>
+                        </div>
+                      )}
+                      
+                      {rawBackOcrText && (
+                        <div>
+                          <p className="text-xs font-medium text-purple-600">Back IC:</p>
+                          <pre className="text-xs text-purple-800 whitespace-pre-wrap bg-white p-2 rounded border border-purple-200 mt-1 max-h-32 overflow-y-auto">{rawBackOcrText}</pre>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {icFullVerification.data && (
+                    <div className="mt-3 p-3 bg-green-50 rounded border border-green-300">
+                      <p className="text-xs font-semibold text-green-700 mb-2">✅ Data from Government Database (This is what gets used!):</p>
+                      <p className="text-xs text-green-600 mb-2">↓ All this data was retrieved using just the IC number ↓</p>
+                      <div className="text-xs space-y-1 text-green-800">
+                        <p><span className="font-medium">IC Number:</span> {icFullVerification.data.icNumber}</p>
+                        <p><span className="font-medium">Full Name:</span> {icFullVerification.data.fullName} ⭐ (Auto-filled)</p>
+                        <p><span className="font-medium">Gender:</span> {icFullVerification.data.gender === 'M' ? 'Male' : 'Female'} ⭐</p>
+                        <p><span className="font-medium">Date of Birth:</span> {icFullVerification.data.dateOfBirth} ⭐</p>
+                        <p><span className="font-medium">Birth Place:</span> {icFullVerification.data.birthPlace}</p>
+                        <p><span className="font-medium">Nationality:</span> {icFullVerification.data.nationality}</p>
+                        <p><span className="font-medium">Religion:</span> {icFullVerification.data.religion}</p>
+                        <p><span className="font-medium">Address:</span> {icFullVerification.data.address}</p>
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
-              
-              <p className="text-xs text-gray-500 mt-2 text-center">
-                Upload a clear photo of your IC front side. System will focus on the name area below the chip for better accuracy.
-              </p>
             </div>
             
             {/* Malaysian IC Number Field */}
             <div>
               <label htmlFor="icNumber" className="block text-sm font-medium text-gray-700 mb-2">
-                Malaysian IC Number (MyKad) {icImagePreview && <span className="text-xs text-blue-600">(or enter manually)</span>}
+                Malaysian IC Number (MyKad) {(icFrontPreview || icBackPreview) && <span className="text-xs text-blue-600">(or enter manually)</span>}
               </label>
               <input
                 id="icNumber"
