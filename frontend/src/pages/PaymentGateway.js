@@ -158,14 +158,29 @@ const PaymentGateway = () => {
       if (response.data.success) {
         updateBalance(response.data.newBalance);
         setPaymentCompleted(true);
-        setMessage({ type: 'success', text: 'Payment successful! Redirecting...' });
-        
-        // Immediate redirect for reliability
-        if (paymentData.returnUrl) {
-          window.location.href = `${paymentData.returnUrl}?status=success&orderId=${paymentData.orderId}&sessionId=${sessionId}`;
-        } else {
-          window.location.href = '/transactions';
+
+        const fraudData = response.data.fraudDetection;
+        const riskLevel = fraudData?.riskLevel;
+        const recommendation = fraudData?.recommendation;
+
+        let text = 'Payment successful! Redirecting...';
+        if (recommendation === 'REVIEW' || riskLevel === 'medium') {
+          text = '⚠️ Medium Risk Payment - Under review. Redirecting...';
+        } else if (riskLevel) {
+          text = `✅ Payment successful! (${riskLevel} risk detected) Redirecting...`;
         }
+
+        setMessage({ type: 'success', text });
+
+        // Short delay so user can see the risk message
+        setTimeout(() => {
+          if (paymentData.returnUrl) {
+            window.location.href = `${paymentData.returnUrl}?status=success&orderId=${paymentData.orderId}&sessionId=${sessionId}`;
+          } else {
+            window.location.href = '/transactions';
+          }
+        }, 1500);
+
         return;
       }
     } catch (error) {
@@ -184,7 +199,7 @@ const PaymentGateway = () => {
         setMessage({
           type: 'error',
           text: `🚫 Transaction Blocked`,
-          detail: error.response.data.reason,
+          detail: error.response.data.reason || error.response.data.message,
         });
         // Redirect to transactions page after showing error
         setTimeout(() => {

@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "setup": "node setupDatabase.js"
+    "setup": "node setupDatabase.js",
+    "seed:ic": "node seedICDatabase.js",
+    "import:fraud": "node importFraudWebsites.js"
   },
   "keywords": [],
   "author": "",
