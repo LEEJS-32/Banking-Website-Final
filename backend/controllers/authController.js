@@ -2,8 +2,18 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const User = require('../models/User');
 const { validateMalaysianIC } = require('../utils/icValidator');
-const { preprocessICImage, validateICImage, imageToBase64 } = require('../utils/icOCR');
+const { 
+  preprocessICImage, 
+  validateICImage, 
+  imageToBase64,
+  detectSecurityFeatures 
+} = require('../utils/icOCR');
 const { sendVerificationEmail, sendWelcomeEmail } = require('../utils/emailService');
+const {
+  verifyICWithDatabase,
+  verifyICFrontAndBack,
+  checkICRegistered
+} = require('../services/icVerification');
 
 // Generate JWT Token
 const generateToken = (id) => {
@@ -287,7 +297,7 @@ const adminLogin = async (req, res) => {
 
 // @desc    Get user profile
 // @route   GET /api/auth/profile
-// @desc    Verify Malaysian IC number
+// @desc    Verify Malaysian IC number (basic format check)
 // @route   POST /api/auth/verify-ic
 // @access  Public
 const verifyIC = async (req, res) => {
@@ -336,7 +346,62 @@ const verifyIC = async (req, res) => {
   }
 };
 
-// @desc    Upload and process IC image
+// @desc    Verify IC against mock government database
+// @route   POST /api/auth/verify-ic-database
+// @access  Public
+const verifyICDatabase = async (req, res) => {
+  try {
+    const { icNumber, fullName } = req.body;
+
+    if (!icNumber) {
+      return res.status(400).json({ message: 'IC number is required' });
+    }
+
+    // First validate format
+    const formatValidation = validateMalaysianIC(icNumber);
+    if (!formatValidation.valid) {
+      return res.status(400).json({ 
+        message: formatValidation.error,
+        verified: false 
+      });
+    }
+
+    // Check if already registered in our system
+    const registrationCheck = await checkICRegistered(icNumber, User);
+    if (registrationCheck.registered) {
+      return res.status(400).json({ 
+        message: registrationCheck.message,
+        verified: false,
+        duplicate: true
+      });
+    }
+
+    // Verify against mock government database
+    const dbVerification = await verifyICWithDatabase(icNumber, fullName);
+
+    if (!dbVerification.verified) {
+      return res.status(400).json({
+        verified: false,
+        status: dbVerification.status,
+        message: dbVerification.message,
+        reason: dbVerification.reason
+      });
+    }
+
+    // Success - return verified data
+    res.json({
+      verified: true,
+      status: dbVerification.status,
+      message: dbVerification.message,
+      data: dbVerification.data
+    });
+  } catch (error) {
+    console.error('IC database verification error:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Upload and process IC image (front or back)
 // @route   POST /api/auth/upload-ic
 // @access  Public
 const uploadIC = async (req, res) => {
@@ -344,6 +409,8 @@ const uploadIC = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ message: 'No image file uploaded' });
     }
+
+    const { side } = req.body; // 'front' or 'back'
 
     // Validate image
     const validation = await validateICImage(req.file.buffer);
@@ -357,21 +424,84 @@ const uploadIC = async (req, res) => {
     // Preprocess image for better OCR
     const processedImage = await preprocessICImage(req.file.buffer);
     
+    // Detect security features
+    const securityAnalysis = await detectSecurityFeatures(req.file.buffer);
+    
     // Convert to base64 for frontend OCR processing
     const base64Image = imageToBase64(processedImage);
 
     res.json({
       success: true,
-      message: 'Image uploaded and processed successfully',
+      message: `IC ${side || 'image'} uploaded and processed successfully`,
       image: base64Image,
+      side: side || 'unknown',
       metadata: {
         width: validation.width,
         height: validation.height,
         format: validation.format
-      }
+      },
+      securityFeatures: securityAnalysis
     });
   } catch (error) {
     console.error('IC upload error:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Verify both front and back IC data
+// @route   POST /api/auth/verify-ic-complete
+// @access  Public
+const verifyICComplete = async (req, res) => {
+  try {
+    const { frontData, backData } = req.body;
+
+    // Validate required data
+    if (!frontData || !frontData.icNumber) {
+      return res.status(400).json({ 
+        message: 'Front IC data (IC number) is required',
+        verified: false 
+      });
+    }
+
+    if (!backData || !backData.icNumber) {
+      return res.status(400).json({ 
+        message: 'Back IC data is required',
+        verified: false 
+      });
+    }
+
+    // Verify both sides match and check database
+    const verification = await verifyICFrontAndBack(frontData, backData);
+
+    if (!verification.verified) {
+      return res.status(400).json({
+        verified: false,
+        status: verification.status,
+        message: verification.message,
+        details: verification
+      });
+    }
+
+    // Check if already registered
+    const registrationCheck = await checkICRegistered(frontData.icNumber, User);
+    if (registrationCheck.registered) {
+      return res.status(400).json({ 
+        verified: false,
+        message: registrationCheck.message,
+        duplicate: true
+      });
+    }
+
+    // Return complete verification result
+    res.json({
+      verified: true,
+      status: verification.status,
+      message: verification.message,
+      data: verification.data,
+      verificationDetails: verification.verificationDetails
+    });
+  } catch (error) {
+    console.error('Complete IC verification error:', error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -477,7 +607,9 @@ module.exports = {
   login,
   adminLogin,
   verifyIC,
+  verifyICDatabase,
   uploadIC,
+  verifyICComplete,
   getProfile,
   verifyEmail,
   resendVerificationEmail,

@@ -194,9 +194,180 @@ const imageToBase64 = (imageBuffer) => {
   return `data:image/jpeg;base64,${imageBuffer.toString('base64')}`;
 };
 
+/**
+ * Extract data from back of Malaysian IC
+ * Back side typically contains: Address, Thumbprint, Army/Police info, Additional info
+ * @param {string} text - Extracted text from OCR (back side)
+ * @returns {Object} - Extracted data {icNumber, address, additionalInfo}
+ */
+const extractICBackFromText = (text) => {
+  if (!text) return { icNumber: null, address: null, additionalInfo: null };
+
+  let icNumber = null;
+  let address = null;
+  let additionalInfo = {};
+
+  // Extract IC number (may appear on back as well)
+  const cleanText = text.replace(/[\s\-\.]/g, '');
+  const icPattern = /(\d{12})/g;
+  const icMatches = cleanText.match(icPattern);
+  
+  if (icMatches && icMatches.length > 0) {
+    icNumber = icMatches[0];
+  }
+
+  // Extract address
+  // Malaysian IC back typically has "ALAMAT" or "ADDRESS" label
+  const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+  
+  let addressLines = [];
+  let foundAddressKeyword = false;
+  let collectingAddress = false;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    
+    // Look for address keywords
+    if (/ALAMAT|ADDRESS/i.test(line)) {
+      foundAddressKeyword = true;
+      collectingAddress = true;
+      
+      // Check if address starts on the same line
+      const afterKeyword = line.split(/ALAMAT|ADDRESS/i)[1];
+      if (afterKeyword && afterKeyword.trim().length > 3) {
+        addressLines.push(afterKeyword.trim());
+      }
+      continue;
+    }
+    
+    // Collect address lines (typically 2-4 lines after keyword)
+    if (collectingAddress && addressLines.length < 4) {
+      // Address line patterns:
+      // - Contains street/location keywords
+      // - Contains numbers and letters
+      // - Not mostly numbers (postal code is ok)
+      const hasLetters = /[A-Z]/i.test(line);
+      const hasNumbers = /\d/.test(line);
+      const isReasonableLength = line.length >= 3 && line.length <= 100;
+      
+      // Common address keywords
+      const hasAddressKeywords = /(NO\.|LOT|JALAN|JLN|TAMAN|TMN|KAMPUNG|KG|BANDAR|KUALA|SHAH|PETALING|SELANGOR|JOHOR|PERAK|KEDAH|PENANG|MELAKA|NEGERI|SEMBILAN|PAHANG|TERENGGANU|KELANTAN|PERLIS|SABAH|SARAWAK|LABUAN|PUTRAJAYA|W\.P\.|WILAYAH)/i.test(line);
+      
+      // Stop collecting if we hit non-address content
+      const isNotAddress = /(WARGANEGARA|NATIONALITY|THUMBPRINT|JANTINA|AGAMA|RELIGION|RACE|BANGSA|ARMY|POLICE|TENTERA|POLIS)/i.test(line);
+      
+      if (isNotAddress) {
+        collectingAddress = false;
+        break;
+      }
+      
+      if (hasLetters && isReasonableLength && (hasAddressKeywords || hasNumbers || foundAddressKeyword)) {
+        addressLines.push(line);
+      }
+    }
+  }
+  
+  // Join address lines
+  if (addressLines.length > 0) {
+    address = addressLines.join(', ').toUpperCase();
+    // Clean up common OCR errors
+    address = address.replace(/\s+/g, ' ').trim();
+  }
+  
+  // Extract additional info (nationality, race, religion if present)
+  for (const line of lines) {
+    if (/WARGANEGARA|NATIONALITY/i.test(line)) {
+      const match = line.match(/(?:WARGANEGARA|NATIONALITY)\s*:?\s*([A-Z\s]+)/i);
+      if (match) additionalInfo.nationality = match[1].trim();
+    }
+    
+    if (/AGAMA|RELIGION/i.test(line)) {
+      const match = line.match(/(?:AGAMA|RELIGION)\s*:?\s*([A-Z\s]+)/i);
+      if (match) additionalInfo.religion = match[1].trim();
+    }
+    
+    if (/BANGSA|RACE/i.test(line)) {
+      const match = line.match(/(?:BANGSA|RACE)\s*:?\s*([A-Z\s]+)/i);
+      if (match) additionalInfo.race = match[1].trim();
+    }
+  }
+
+  return { icNumber, address, additionalInfo };
+};
+
+/**
+ * Detect security features in IC image (basic implementation)
+ * @param {Buffer} imageBuffer - Image buffer
+ * @returns {Promise<Object>} - Security feature analysis
+ */
+const detectSecurityFeatures = async (imageBuffer) => {
+  try {
+    const metadata = await sharp(imageBuffer).metadata();
+    const stats = await sharp(imageBuffer).stats();
+    
+    // Basic heuristics for security feature detection
+    // In production, you would use computer vision models
+    
+    const analysis = {
+      hologramDetected: false,
+      chipDetected: false,
+      microTextDetected: false,
+      colorShiftDetected: false,
+      imageQuality: 'unknown'
+    };
+    
+    // Image quality assessment based on sharpness and entropy
+    const channelStats = stats.channels[0]; // Use first channel
+    const entropy = channelStats.entropy || 0;
+    
+    if (entropy > 7) {
+      analysis.imageQuality = 'high';
+      // High entropy might indicate hologram or complex security features
+      analysis.hologramDetected = true;
+    } else if (entropy > 5) {
+      analysis.imageQuality = 'medium';
+    } else {
+      analysis.imageQuality = 'low';
+    }
+    
+    // Check image dimensions (chip area is usually in a specific location)
+    // Malaysian IC chip is typically in the left side
+    if (metadata.width > 600 && metadata.height > 400) {
+      analysis.chipDetected = true; // Assume chip if image quality is decent
+    }
+    
+    // Color information (holograms often have color shifts)
+    if (metadata.space === 'srgb' && stats.channels.length >= 3) {
+      // Check variance between channels (color shift indicator)
+      const redStd = stats.channels[0].stdev;
+      const greenStd = stats.channels[1].stdev;
+      const blueStd = stats.channels[2].stdev;
+      
+      const stdVariance = Math.max(redStd, greenStd, blueStd) - Math.min(redStd, greenStd, blueStd);
+      if (stdVariance > 10) {
+        analysis.colorShiftDetected = true;
+      }
+    }
+    
+    return analysis;
+  } catch (error) {
+    console.error('Security feature detection error:', error);
+    return {
+      hologramDetected: false,
+      chipDetected: false,
+      microTextDetected: false,
+      colorShiftDetected: false,
+      imageQuality: 'unknown',
+      error: error.message
+    };
+  }
+};
+
 module.exports = {
   preprocessICImage,
   extractICFromText,
+  extractICBackFromText,
   validateICImage,
-  imageToBase64
+  imageToBase64,
+  detectSecurityFeatures
 };
