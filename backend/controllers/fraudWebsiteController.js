@@ -6,11 +6,20 @@ const { extractDomain } = require('../controllers/paymentGatewayController');
 // @access  Private/Admin
 const getAllFraudWebsites = async (req, res) => {
   try {
-    const { isActive } = req.query;
+    const { isActive, search } = req.query;
     
     let query = {};
     if (isActive !== undefined) {
       query.isActive = isActive === 'true';
+    }
+
+    // Add search functionality
+    if (search) {
+      query.$or = [
+        { domain: { $regex: search, $options: 'i' } },
+        { merchantName: { $regex: search, $options: 'i' } },
+        { reason: { $regex: search, $options: 'i' } },
+      ];
     }
 
     const fraudWebsites = await FraudWebsite.find(query)

@@ -4,6 +4,7 @@ const FraudWebsite = require('../models/FraudWebsite');
 const PendingPayment = require('../models/PendingPayment');
 const mongoose = require('mongoose');
 const { checkRateLimit } = require('../middleware/rateLimit');
+const { checkFraud } = require('../services/fraudDetection');
 
 /**
  * Extract domain from URL
@@ -169,35 +170,50 @@ const processPayment = async (req, res) => {
       });
     }
 
+    // CRITICAL: Find existing pending transaction early so we can update it
+    // for fraud blocks and success paths without violating the unique sessionId index.
+    // Search WITHOUT session to avoid transaction isolation issues.
+    let existingPending = null;
+
+    if (pendingPaymentId) {
+      existingPending = await Transaction.findById(pendingPaymentId);
+      console.log(`Found pending by ID: ${existingPending ? existingPending._id : 'NOT FOUND'}`);
+    }
+
+    if (!existingPending) {
+      existingPending = await Transaction.findOne({ sessionId, status: 'pending' });
+      console.log(`Found pending by sessionId: ${existingPending ? existingPending._id : 'NOT FOUND'}`);
+    }
+
+    if (!existingPending) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        message: 'No pending payment found for this session. Please refresh and try again.',
+        noPending: true,
+      });
+    }
+
     // Check merchant domain for fraud
     const domainCheck = await checkMerchantDomain(merchantUrl);
     const domain = extractDomain(merchantUrl);
 
     if (domainCheck.isFraud) {
-      // Create blocked transaction record
+      // Update existing pending transaction -> blocked
       const user = await User.findById(req.user._id).session(session);
-      
-      await Transaction.create([{
-        userId: req.user._id,
-        type: 'payment',
-        amount: parsedAmount,
-        description: description || `Payment to ${merchantName}`,
-        merchantUrl: merchantUrl,
-        merchantName: merchantName,
-        merchantDomain: domain,
-        orderId: orderId,
-        sessionId: sessionId,
-        balanceAfter: user.balance,
-        status: 'blocked',
-        blockReason: `Fraudulent merchant detected: ${domainCheck.reason}`,
-        fraudWebsiteDetection: {
-          detected: true,
-          domain: domain,
-          merchantName: merchantName,
-          reason: domainCheck.reason,
-          riskLevel: domainCheck.riskLevel,
-        },
-      }], { session });
+
+      existingPending.status = 'blocked';
+      existingPending.balanceAfter = user.balance;
+      existingPending.blockReason = `Fraudulent merchant detected: ${domainCheck.reason}`;
+      existingPending.expiresAt = undefined; // no longer an "abandoned" pending session
+      existingPending.fraudWebsiteDetection = {
+        detected: true,
+        domain,
+        merchantName,
+        reason: domainCheck.reason,
+        riskLevel: domainCheck.riskLevel,
+      };
+
+      await existingPending.save({ session });
 
       await session.commitTransaction();
 
@@ -219,25 +235,48 @@ const processPayment = async (req, res) => {
       return res.status(400).json({ message: 'Insufficient funds' });
     }
 
-    // CRITICAL FIX: Find and UPDATE existing pending transaction
-    // Search WITHOUT session to avoid transaction isolation issues
-    let existingPending = null;
-    
-    if (pendingPaymentId) {
-      existingPending = await Transaction.findById(pendingPaymentId);
-      console.log(`Found pending by ID: ${existingPending ? existingPending._id : 'NOT FOUND'}`);
-    }
-    
-    if (!existingPending) {
-      existingPending = await Transaction.findOne({ sessionId, status: 'pending' });
-      console.log(`Found pending by sessionId: ${existingPending ? existingPending._id : 'NOT FOUND'}`);
-    }
+    // Fraud detection (ML) - same logic as money transfer
+    const fraudResult = await checkFraud({
+      amount: parsedAmount,
+      description: description || `payment to ${merchantName}`,
+      senderProfile: {
+        gender: user.gender || 'M',
+        dateOfBirth: user.dateOfBirth,
+        bank: user.bank || 'HSBC',
+        country: user.country || 'United Kingdom',
+        shippingAddress: user.shippingAddress || user.country || 'United Kingdom',
+      },
+    });
 
-    if (!existingPending) {
-      await session.abortTransaction();
-      return res.status(400).json({ 
-        message: 'No pending payment found for this session. Please refresh and try again.',
-        noPending: true 
+    if (fraudResult.is_fraud && fraudResult.risk_level === 'high') {
+      // Block payment; do NOT deduct funds
+      existingPending.status = 'blocked';
+      existingPending.balanceAfter = user.balance;
+      existingPending.blockReason = 'Transaction blocked due to high fraud risk';
+      existingPending.expiresAt = undefined;
+      existingPending.fraudDetection = {
+        checked: true,
+        isFraud: fraudResult.is_fraud,
+        fraudProbability: fraudResult.fraud_probability,
+        riskLevel: fraudResult.risk_level,
+        reasons: fraudResult.reasons || [],
+        recommendation: 'BLOCK',
+      };
+
+      await existingPending.save({ session });
+      await session.commitTransaction();
+
+      return res.status(403).json({
+        success: false,
+        blocked: true,
+        message: 'Transaction blocked due to high fraud risk',
+        reason: (fraudResult.reasons && fraudResult.reasons[0]) || 'High fraud risk detected',
+        fraudDetection: {
+          isFraud: fraudResult.is_fraud,
+          riskLevel: fraudResult.risk_level,
+          probability: fraudResult.fraud_probability,
+          reasons: fraudResult.reasons || [],
+        },
       });
     }
 
@@ -245,10 +284,27 @@ const processPayment = async (req, res) => {
     user.balance -= parsedAmount;
     await user.save({ session });
 
-    // Update the existing pending transaction to completed
-    existingPending.status = 'completed';
+    // Update the existing pending transaction with fraud detection + final status
+    const shouldReview =
+      (fraudResult.is_fraud && fraudResult.risk_level === 'medium') ||
+      fraudResult.recommendation === 'REVIEW';
+
+    existingPending.status = shouldReview ? 'pending' : 'completed';
     existingPending.balanceAfter = user.balance;
-    existingPending.completedAt = new Date();
+    existingPending.expiresAt = undefined;
+    existingPending.fraudDetection = {
+      checked: true,
+      isFraud: fraudResult.is_fraud,
+      fraudProbability: fraudResult.fraud_probability,
+      riskLevel: fraudResult.risk_level,
+      reasons: fraudResult.reasons || [],
+      recommendation: shouldReview ? 'REVIEW' : (fraudResult.recommendation || 'APPROVE'),
+    };
+
+    if (!shouldReview) {
+      existingPending.completedAt = new Date();
+    }
+
     await existingPending.save({ session });
 
     // Safety cleanup: if duplicates exist from earlier races, remove them now.
@@ -266,10 +322,18 @@ const processPayment = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Payment successful',
+      message: shouldReview ? 'Payment submitted for review' : 'Payment successful',
       transaction: transaction,
       newBalance: user.balance,
       sessionId: sessionId,
+      fraudDetection: {
+        checked: true,
+        isFraud: fraudResult.is_fraud,
+        riskLevel: fraudResult.risk_level,
+        probability: fraudResult.fraud_probability,
+        reasons: fraudResult.reasons || [],
+        recommendation: shouldReview ? 'REVIEW' : (fraudResult.recommendation || 'APPROVE'),
+      },
     });
 
   } catch (error) {

@@ -1,5 +1,14 @@
 const fs = require('fs').promises;
 const path = require('path');
+const mongoose = require('mongoose');
+
+let ICRecord;
+try {
+  // Optional dependency for environments that haven't migrated yet
+  ICRecord = require('../models/ICRecord');
+} catch (e) {
+  ICRecord = null;
+}
 
 // Path to mock IC database
 const DB_PATH = path.join(__dirname, '../data/mockICDatabase.json');
@@ -18,6 +27,90 @@ const loadDatabase = async () => {
   }
 };
 
+const normalizeIC = (icNumber) => String(icNumber || '').replace(/[-\s]/g, '');
+
+const queryICRecordFromMongo = async (cleanIC) => {
+  if (!ICRecord) return { ok: false, record: null };
+  if (mongoose.connection?.readyState !== 1) return { ok: false, record: null }; // 1 = connected
+
+  try {
+    const record = await ICRecord.findOne({ icNumber: cleanIC }).lean();
+    return { ok: true, record };
+  } catch (error) {
+    console.error('Error querying ICRecord from MongoDB:', error);
+    return { ok: false, record: null };
+  }
+};
+
+const verifyICAgainstRecord = async (record, cleanIC, fullName = null) => {
+  if (!record) {
+    return {
+      verified: false,
+      status: 'not_found',
+      message:
+        'IC number not found in government database. This could be a fake or invalid IC.',
+      suggestion:
+        'Please verify your IC number and try again. If the issue persists, contact support.',
+    };
+  }
+
+  if (record.recordType === 'blacklisted') {
+    return {
+      verified: false,
+      status: 'blacklisted',
+      reason: record.reason,
+      message: 'This IC has been reported and cannot be used for registration',
+      reportedDate: record.reportedDate,
+    };
+  }
+
+  if (record.recordType === 'revoked') {
+    return {
+      verified: false,
+      status: 'revoked',
+      reason: record.reason,
+      message: 'This IC has been revoked and is no longer valid',
+      revokedDate: record.revokedDate,
+    };
+  }
+
+  // recordType: valid
+  if (fullName) {
+    const normalizedInputName = fullName.trim().toUpperCase();
+    const normalizedDBName = String(record.fullName || '').toUpperCase();
+
+    if (normalizedInputName !== normalizedDBName) {
+      return {
+        verified: false,
+        status: 'name_mismatch',
+        message: 'The name does not match the IC number in our records',
+        expectedName: record.fullName,
+      };
+    }
+  }
+
+  return {
+    verified: true,
+    status: 'active',
+    message: 'IC verified successfully against government database',
+    data: {
+      icNumber: record.icNumber,
+      fullName: record.fullName,
+      gender: record.gender,
+      dateOfBirth: record.dateOfBirth,
+      birthPlace: record.birthPlace,
+      nationality: record.nationality,
+      religion: record.religion,
+      address: record.address,
+      securityFeatures: {
+        thumbprintPresent: record.thumbprintPresent,
+        hologramPresent: record.hologramPresent,
+        chipPresent: record.chipPresent,
+      },
+    },
+  };
+};
+
 /**
  * Verify IC against mock government database
  * @param {string} icNumber - 12-digit IC number
@@ -25,62 +118,70 @@ const loadDatabase = async () => {
  * @returns {Promise<Object>} Verification result
  */
 const verifyICWithDatabase = async (icNumber, fullName = null) => {
-  const db = await loadDatabase();
-  
   // Remove dashes and spaces
-  const cleanIC = icNumber.replace(/[-\s]/g, '');
-  
+  const cleanIC = normalizeIC(icNumber);
+
+  // Prefer MongoDB Atlas (if connected)
+  const mongoQuery = await queryICRecordFromMongo(cleanIC);
+  if (mongoQuery.ok) {
+    return await verifyICAgainstRecord(mongoQuery.record, cleanIC, fullName);
+  }
+
+  // Fallback: local JSON file (only when MongoDB is not available)
+  const db = await loadDatabase();
+
   // Check if IC is blacklisted
-  const blacklisted = db.blacklistedICs.find(ic => ic.icNumber === cleanIC);
+  const blacklisted = (db.blacklistedICs || []).find((ic) => ic.icNumber === cleanIC);
   if (blacklisted) {
     return {
       verified: false,
       status: 'blacklisted',
       reason: blacklisted.reason,
       message: 'This IC has been reported and cannot be used for registration',
-      reportedDate: blacklisted.reportedDate
+      reportedDate: blacklisted.reportedDate,
     };
   }
-  
+
   // Check if IC is revoked
-  const revoked = db.revokedICs.find(ic => ic.icNumber === cleanIC);
+  const revoked = (db.revokedICs || []).find((ic) => ic.icNumber === cleanIC);
   if (revoked) {
     return {
       verified: false,
       status: 'revoked',
       reason: revoked.reason,
       message: 'This IC has been revoked and is no longer valid',
-      revokedDate: revoked.revokedDate
+      revokedDate: revoked.revokedDate,
     };
   }
-  
+
   // Check if IC exists in valid ICs
-  const validIC = db.validICs.find(ic => ic.icNumber === cleanIC);
-  
+  const validIC = (db.validICs || []).find((ic) => ic.icNumber === cleanIC);
   if (!validIC) {
     return {
       verified: false,
       status: 'not_found',
-      message: 'IC number not found in government database. This could be a fake or invalid IC.',
-      suggestion: 'Please verify your IC number and try again. If the issue persists, contact support.'
+      message:
+        'IC number not found in government database. This could be a fake or invalid IC.',
+      suggestion:
+        'Please verify your IC number and try again. If the issue persists, contact support.',
     };
   }
-  
+
   // If name is provided, verify it matches
   if (fullName) {
     const normalizedInputName = fullName.trim().toUpperCase();
     const normalizedDBName = validIC.fullName.toUpperCase();
-    
+
     if (normalizedInputName !== normalizedDBName) {
       return {
         verified: false,
         status: 'name_mismatch',
         message: 'The name does not match the IC number in our records',
-        expectedName: validIC.fullName
+        expectedName: validIC.fullName,
       };
     }
   }
-  
+
   // IC is valid and verified
   return {
     verified: true,
@@ -98,9 +199,9 @@ const verifyICWithDatabase = async (icNumber, fullName = null) => {
       securityFeatures: {
         thumbprintPresent: validIC.thumbprintPresent,
         hologramPresent: validIC.hologramPresent,
-        chipPresent: validIC.chipPresent
-      }
-    }
+        chipPresent: validIC.chipPresent,
+      },
+    },
   };
 };
 
