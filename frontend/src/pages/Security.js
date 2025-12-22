@@ -249,10 +249,6 @@ const Security = () => {
                 <ul className="text-sm text-blue-800 space-y-1">
                   <li className="flex items-start">
                     <span className="text-blue-600 mr-2">✓</span>
-                    <span>Required for transactions exceeding $500</span>
-                  </li>
-                  <li className="flex items-start">
-                    <span className="text-blue-600 mr-2">✓</span>
                     <span>Extra layer of security for your account</span>
                   </li>
                   <li className="flex items-start">

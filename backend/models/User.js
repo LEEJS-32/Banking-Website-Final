@@ -24,20 +24,6 @@ const userSchema = new mongoose.Schema({
     required: [true, 'Password is required'],
     minlength: 6,
   },
-  accountNumber: {
-    type: String,
-    unique: true,
-    required: true,
-  },
-  balance: {
-    type: Number,
-    default: 0,
-  },
-  accountType: {
-    type: String,
-    enum: ['savings', 'checking'],
-    default: 'checking',
-  },
   role: {
     type: String,
     enum: ['user', 'admin'],
@@ -55,18 +41,6 @@ const userSchema = new mongoose.Schema({
   },
   dateOfBirth: {
     type: Date,
-  },
-  bank: {
-    type: String,
-    default: 'HSBC',
-  },
-  country: {
-    type: String,
-    default: 'United Kingdom',
-  },
-  shippingAddress: {
-    type: String,
-    default: 'United Kingdom',
   },
   // Malaysian IC eKYC
   icNumber: {

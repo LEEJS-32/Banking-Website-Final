@@ -1,5 +1,6 @@
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
+const Account = require('../models/Account');
 const FraudWebsite = require('../models/FraudWebsite');
 const PendingPayment = require('../models/PendingPayment');
 const mongoose = require('mongoose');
@@ -200,9 +201,15 @@ const processPayment = async (req, res) => {
     if (domainCheck.isFraud) {
       // Update existing pending transaction -> blocked
       const user = await User.findById(req.user._id).session(session);
+      const account = await Account.findOne({ userId: user._id, isPrimary: true }).session(session);
+
+      if (!account) {
+        await session.abortTransaction();
+        return res.status(404).json({ message: 'No account found for this user' });
+      }
 
       existingPending.status = 'blocked';
-      existingPending.balanceAfter = user.balance;
+      existingPending.balanceAfter = account.balance;
       existingPending.blockReason = `Fraudulent merchant detected: ${domainCheck.reason}`;
       existingPending.expiresAt = undefined; // no longer an "abandoned" pending session
       existingPending.fraudWebsiteDetection = {
@@ -229,8 +236,14 @@ const processPayment = async (req, res) => {
 
     // Process payment
     const user = await User.findById(req.user._id).session(session);
+    const account = await Account.findOne({ userId: user._id, isPrimary: true }).session(session);
 
-    if (user.balance < parsedAmount) {
+    if (!account) {
+      await session.abortTransaction();
+      return res.status(404).json({ message: 'No account found for this user' });
+    }
+
+    if (account.balance < parsedAmount) {
       await session.abortTransaction();
       return res.status(400).json({ message: 'Insufficient funds' });
     }
@@ -242,16 +255,16 @@ const processPayment = async (req, res) => {
       senderProfile: {
         gender: user.gender || 'M',
         dateOfBirth: user.dateOfBirth,
-        bank: user.bank || 'HSBC',
-        country: user.country || 'United Kingdom',
-        shippingAddress: user.shippingAddress || user.country || 'United Kingdom',
+        bank: account.bank || 'HSBC',
+        country: account.country || 'United Kingdom',
+        shippingAddress: account.shippingAddress || account.country || 'United Kingdom',
       },
     });
 
     if (fraudResult.is_fraud && fraudResult.risk_level === 'high') {
       // Block payment; do NOT deduct funds
       existingPending.status = 'blocked';
-      existingPending.balanceAfter = user.balance;
+      existingPending.balanceAfter = account.balance;
       existingPending.blockReason = 'Transaction blocked due to high fraud risk';
       existingPending.expiresAt = undefined;
       existingPending.fraudDetection = {
@@ -280,9 +293,14 @@ const processPayment = async (req, res) => {
       });
     }
 
-    // Deduct balance
-    user.balance -= parsedAmount;
-    await user.save({ session });
+    // Deduct balance from account
+    account.balance -= parsedAmount;
+    await account.save({ session });
+
+    // Update accountId in the pending transaction
+    if (!existingPending.accountId) {
+      existingPending.accountId = account._id;
+    }
 
     // Update the existing pending transaction with fraud detection + final status
     const shouldReview =
@@ -290,7 +308,7 @@ const processPayment = async (req, res) => {
       fraudResult.recommendation === 'REVIEW';
 
     existingPending.status = shouldReview ? 'pending' : 'completed';
-    existingPending.balanceAfter = user.balance;
+    existingPending.balanceAfter = account.balance;
     existingPending.expiresAt = undefined;
     existingPending.fraudDetection = {
       checked: true,
@@ -324,7 +342,7 @@ const processPayment = async (req, res) => {
       success: true,
       message: shouldReview ? 'Payment submitted for review' : 'Payment successful',
       transaction: transaction,
-      newBalance: user.balance,
+      newBalance: account.balance,
       sessionId: sessionId,
       fraudDetection: {
         checked: true,
@@ -386,6 +404,12 @@ const createPendingPayment = async (req, res) => {
     }
 
     const user = await User.findById(req.user._id);
+    const account = await Account.findOne({ userId: user._id, isPrimary: true });
+
+    if (!account) {
+      return res.status(404).json({ message: 'No account found for this user' });
+    }
+
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
     // Atomic upsert keyed by sessionId. With the unique sparse index on sessionId,
@@ -397,6 +421,7 @@ const createPendingPayment = async (req, res) => {
         $setOnInsert: {
           sessionId,
           userId: req.user._id,
+          accountId: account._id,
           type: 'payment',
           amount: parseFloat(amount),
           description: description || `Payment to ${merchantName}`,
@@ -404,7 +429,7 @@ const createPendingPayment = async (req, res) => {
           merchantName,
           merchantDomain: extractDomain(merchantUrl),
           orderId,
-          balanceAfter: user.balance,
+          balanceAfter: account.balance,
           status: 'pending',
         },
       },

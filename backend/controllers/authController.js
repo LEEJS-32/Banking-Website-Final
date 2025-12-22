@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const User = require('../models/User');
+const Account = require('../models/Account');
 const { validateMalaysianIC } = require('../utils/icValidator');
 const { 
   preprocessICImage, 
@@ -69,28 +70,22 @@ const register = async (req, res) => {
 
     // Generate unique account number
     let accountNumber = generateAccountNumber();
-    let accountExists = await User.findOne({ accountNumber });
+    let accountExists = await Account.findOne({ accountNumber });
     
     while (accountExists) {
       accountNumber = generateAccountNumber();
-      accountExists = await User.findOne({ accountNumber });
+      accountExists = await Account.findOne({ accountNumber });
     }
 
-    // Prepare user data
+    // Prepare user data (no account fields)
     const userData = {
       firstName,
       lastName,
       email,
       password,
-      accountNumber,
-      accountType: accountType || 'checking',
-      balance: 1000, // Initial bonus
       // Fraud detection fields - use IC data if available
       gender: icData ? icData.gender : (gender || 'M'),
       dateOfBirth: icData ? icData.dateOfBirth : (dateOfBirth || null),
-      bank: bank || 'HSBC',
-      country: country || 'Malaysia',
-      shippingAddress: country || 'Malaysia',
     };
 
     // Add IC data if verified
@@ -111,6 +106,19 @@ const register = async (req, res) => {
     const user = await User.create(userData);
 
     if (user) {
+      // Create primary account for user
+      const account = await Account.create({
+        userId: user._id,
+        accountNumber,
+        accountType: accountType || 'checking',
+        balance: 1000, // Initial bonus
+        bank: bank || 'HSBC',
+        country: country || 'Malaysia',
+        shippingAddress: country || 'Malaysia',
+        isPrimary: true,
+        isActive: true,
+      });
+
       // Send verification email
       console.log('User created successfully, sending verification email...');
       const emailResult = await sendVerificationEmail(user.email, user.firstName, verificationToken);
@@ -124,9 +132,9 @@ const register = async (req, res) => {
           firstName: user.firstName,
           lastName: user.lastName,
           email: user.email,
-          accountNumber: user.accountNumber,
-          balance: user.balance,
-          accountType: user.accountType,
+          accountNumber: account.accountNumber,
+          balance: account.balance,
+          accountType: account.accountType,
           isEmailVerified: user.isEmailVerified,
           message: 'Registration successful! However, we could not send the verification email. Please use the "Resend Verification" option.',
           emailWarning: true,
@@ -140,9 +148,9 @@ const register = async (req, res) => {
         firstName: user.firstName,
         lastName: user.lastName,
         email: user.email,
-        accountNumber: user.accountNumber,
-        balance: user.balance,
-        accountType: user.accountType,
+        accountNumber: account.accountNumber,
+        balance: account.balance,
+        accountType: account.accountType,
         isEmailVerified: user.isEmailVerified,
         message: 'Registration successful! Please check your email to verify your account.',
         token: generateToken(user._id),
@@ -168,6 +176,13 @@ const login = async (req, res) => {
 
     if (!user) {
       return res.status(401).json({ message: 'Invalid email or password' });
+    }
+
+    // Prevent admin accounts from logging into user side (check this first)
+    if (user.role === 'admin') {
+      return res.status(403).json({ 
+        message: 'Admin accounts are not allowed to login on user side. Please use the admin login portal.' 
+      });
     }
 
     // Check if account is deactivated by admin
@@ -205,13 +220,6 @@ const login = async (req, res) => {
     }
 
     if (await user.comparePassword(password)) {
-      // Prevent admin accounts from logging into user side
-      if (user.role === 'admin') {
-        return res.status(403).json({ 
-          message: 'Admin accounts cannot access the user portal. Please use the admin login.' 
-        });
-      }
-
       // Reset login attempts on successful login
       if (user.loginAttempts > 0) {
         user.loginAttempts = 0;
@@ -220,14 +228,21 @@ const login = async (req, res) => {
         await user.save();
       }
 
+      // Fetch user's primary account
+      const account = await Account.findOne({ userId: user._id, isPrimary: true });
+
+      if (!account) {
+        return res.status(404).json({ message: 'No account found for this user' });
+      }
+
       res.json({
         _id: user._id,
         firstName: user.firstName,
         lastName: user.lastName,
         email: user.email,
-        accountNumber: user.accountNumber,
-        balance: user.balance,
-        accountType: user.accountType,
+        accountNumber: account.accountNumber,
+        balance: account.balance,
+        accountType: account.accountType,
         role: user.role,
         token: generateToken(user._id),
       });
@@ -271,14 +286,18 @@ const adminLogin = async (req, res) => {
     // Check for user email
     const user = await User.findOne({ email });
 
-    if (user && (await user.comparePassword(password))) {
-      // Only allow admin accounts
-      if (user.role !== 'admin') {
-        return res.status(403).json({ 
-          message: 'Access denied. Admin credentials required.' 
-        });
-      }
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid email or password' });
+    }
 
+    // Only allow admin accounts
+    if (user.role !== 'admin') {
+      return res.status(403).json({ 
+        message: 'Access denied. Admin credentials required.' 
+      });
+    }
+
+    if (await user.comparePassword(password)) {
       res.json({
         _id: user._id,
         firstName: user.firstName,

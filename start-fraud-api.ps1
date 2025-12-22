@@ -2,7 +2,7 @@
 Write-Host "Starting Fraud Detection API..." -ForegroundColor Cyan
 
 # Change to fraud API directory
-Set-Location -Path "$PSScriptRoot\transaction_9_Gemini"
+Set-Location -Path "$PSScriptRoot\transaction"
 
 # Check if fraud_detection_system.joblib exists
 if (!(Test-Path "fraud_detection_system.joblib")) {

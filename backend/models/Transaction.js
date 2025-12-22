@@ -6,6 +6,11 @@ const transactionSchema = new mongoose.Schema({
     ref: 'User',
     required: true,
   },
+  accountId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Account',
+    required: true,
+  },
   type: {
     type: String,
     enum: ['deposit', 'withdrawal', 'transfer', 'payment'],
@@ -72,32 +77,9 @@ const transactionSchema = new mongoose.Schema({
       enum: ['low', 'medium', 'high', 'critical'],
     },
   },
-  fraudDetection: {
-    checked: {
-      type: Boolean,
-      default: false,
-    },
-    isFraud: {
-      type: Boolean,
-      default: false,
-    },
-    fraudProbability: {
-      type: Number,
-      default: 0,
-    },
-    riskLevel: {
-      type: String,
-      enum: ['low', 'medium', 'high', 'unknown'],
-      default: 'low',
-    },
-    reasons: [{
-      type: String,
-    }],
-    recommendation: {
-      type: String,
-      enum: ['APPROVE', 'REVIEW', 'BLOCK'],
-      default: 'APPROVE',
-    },
+  fraudDetectionId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'FraudDetection',
   },
   createdAt: {
     type: Date,

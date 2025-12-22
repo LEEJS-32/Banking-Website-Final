@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const Transaction = require('../models/Transaction');
+const Account = require('../models/Account');
 
 // @desc    Get admin dashboard statistics
 // @route   GET /api/admin/dashboard
@@ -68,7 +69,23 @@ const getAllUsers = async (req, res) => {
       .select('-password')
       .sort({ createdAt: -1 });
     
-    res.json(users);
+    // Fetch accounts for each user
+    const usersWithAccounts = await Promise.all(
+      users.map(async (user) => {
+        const accounts = await Account.find({ userId: user._id });
+        const primaryAccount = accounts.find(acc => acc.isPrimary) || accounts[0];
+        
+        return {
+          ...user.toObject(),
+          accountNumber: primaryAccount?.accountNumber || 'N/A',
+          balance: primaryAccount?.balance || 0,
+          accountType: primaryAccount?.accountType || 'N/A',
+          accounts: accounts
+        };
+      })
+    );
+    
+    res.json(usersWithAccounts);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -85,12 +102,15 @@ const getUserById = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
     
+    // Get user's accounts
+    const accounts = await Account.find({ userId: user._id });
+    
     // Get user's transactions
     const transactions = await Transaction.find({ userId: user._id })
       .sort({ createdAt: -1 })
       .limit(20);
     
-    res.json({ user, transactions });
+    res.json({ user, accounts, transactions });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -162,20 +182,28 @@ const updateUserBalance = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
     
-    if (type === 'credit') {
-      user.balance += amount;
-    } else {
-      if (user.balance < amount) {
-        return res.status(400).json({ message: 'Insufficient balance' });
-      }
-      user.balance -= amount;
+    // Get user's primary account
+    const account = await Account.findOne({ userId: user._id, isPrimary: true });
+    
+    if (!account) {
+      return res.status(404).json({ message: 'No account found for this user' });
     }
     
-    await user.save();
+    if (type === 'credit') {
+      account.balance += amount;
+    } else {
+      if (account.balance < amount) {
+        return res.status(400).json({ message: 'Insufficient balance' });
+      }
+      account.balance -= amount;
+    }
+    
+    await account.save();
     
     // Create transaction record
     await Transaction.create({
       userId: user._id,
+      accountId: account._id,
       type: type === 'credit' ? 'deposit' : 'withdrawal',
       amount,
       description: description || `Admin ${type} - ${req.user.email}`,
@@ -184,7 +212,7 @@ const updateUserBalance = async (req, res) => {
     
     res.json({
       message: `Balance ${type === 'credit' ? 'credited' : 'debited'} successfully`,
-      newBalance: user.balance,
+      newBalance: account.balance,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
