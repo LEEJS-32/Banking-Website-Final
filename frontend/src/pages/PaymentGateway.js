@@ -25,6 +25,8 @@ const PaymentGateway = () => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [showBiometricPrompt, setShowBiometricPrompt] = useState(false);
+  const [showVerificationChoice, setShowVerificationChoice] = useState(false);
+  const [fingerprintEnrolled, setFingerprintEnrolled] = useState(false);
   const [pendingPaymentId, setPendingPaymentId] = useState(null);
   const [paymentCompleted, setPaymentCompleted] = useState(false);
 
@@ -71,6 +73,22 @@ const PaymentGateway = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, paymentData.merchantUrl, sessionId]);
 
+  // Check fingerprint enrollment status on mount
+  useEffect(() => {
+    const checkFingerprint = async () => {
+      if (!user) return;
+      try {
+        const response = await axios.get('http://localhost:5000/api/fingerprint/status', {
+          headers: { Authorization: `Bearer ${user.token}` },
+        });
+        setFingerprintEnrolled(response.data.enrolled);
+      } catch (error) {
+        console.error('Failed to check fingerprint status');
+      }
+    };
+    checkFingerprint();
+  }, [user]);
+
   const createPendingPayment = async () => {
     if (!user || !paymentData.merchantUrl) return;
 
@@ -112,10 +130,59 @@ const PaymentGateway = () => {
     }
   };
 
+  const verifyFingerprint = async () => {
+    try {
+      const response = await axios.post(
+        'http://localhost:5000/api/fingerprint/verify',
+        {},
+        { headers: { Authorization: `Bearer ${user.token}` } }
+      );
+      return {
+        success: response.data.verified,
+        message: response.data.message,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.response?.data?.error || 'Fingerprint verification failed',
+      };
+    }
+  };
+
   const handlePayment = async () => {
-    // Check if biometric is required
+    // Check if either biometric or fingerprint is enrolled
+    if (!biometricEnabled && !fingerprintEnrolled) {
+      setMessage({
+        type: 'error',
+        text: 'Payment requires biometric authentication. Please enroll your biometric or fingerprint in Security settings.',
+      });
+      return;
+    }
+
+    // If both methods available, show choice
+    if (biometricEnabled && fingerprintEnrolled) {
+      setShowVerificationChoice(true);
+      return;
+    }
+
+    // Use available method
     if (biometricEnabled) {
       setShowBiometricPrompt(true);
+      return;
+    }
+
+    if (fingerprintEnrolled) {
+      setMessage({ type: 'info', text: 'Please place your finger on the scanner...' });
+      const fingerprintResult = await verifyFingerprint();
+      
+      if (fingerprintResult.success) {
+        await processPayment();
+      } else {
+        setMessage({
+          type: 'error',
+          text: fingerprintResult.message || 'Fingerprint verification failed. Payment cancelled.',
+        });
+      }
       return;
     }
     
@@ -126,15 +193,52 @@ const PaymentGateway = () => {
     setLoading(true);
     setMessage({ type: 'info', text: 'Verifying fingerprint...' });
     
-    const verified = await verifyBiometric();
+    const result = await verifyBiometric(user.token);
     
-    if (verified) {
+    if (result.success) {
       setShowBiometricPrompt(false);
       await processPayment();
     } else {
       setLoading(false);
-      setMessage({ type: 'error', text: 'Biometric verification failed. Payment cancelled.' });
+      setMessage({ type: 'error', text: result.message || 'Biometric verification failed. Payment cancelled.' });
       setShowBiometricPrompt(false);
+    }
+  };
+
+  const handleVerificationChoice = async (method) => {
+    setShowVerificationChoice(false);
+    let verificationSuccess = false;
+
+    if (method === 'browser') {
+      setShowBiometricPrompt(true);
+      setMessage({ type: 'info', text: 'Please verify your identity using browser biometric authentication.' });
+      const biometricResult = await verifyBiometric(user.token);
+      verificationSuccess = biometricResult.success;
+      setShowBiometricPrompt(false);
+
+      if (!verificationSuccess) {
+        setMessage({
+          type: 'error',
+          text: biometricResult.message || 'Biometric verification failed. Please try again.',
+        });
+        return;
+      }
+    } else if (method === 'fingerprint') {
+      setMessage({ type: 'info', text: 'Please place your finger on the scanner...' });
+      const fingerprintResult = await verifyFingerprint();
+      verificationSuccess = fingerprintResult.success;
+
+      if (!verificationSuccess) {
+        setMessage({
+          type: 'error',
+          text: fingerprintResult.message || 'Fingerprint verification failed. Please try again.',
+        });
+        return;
+      }
+    }
+
+    if (verificationSuccess) {
+      await processPayment();
     }
   };
 
@@ -343,8 +447,10 @@ const PaymentGateway = () => {
             <div className="text-center text-xs text-gray-500 pt-4 border-t">
               <p>🔒 Secured by SecureBank Payment Gateway</p>
               <p className="mt-1">Your payment information is encrypted and secure</p>
-              {biometricEnabled && (
-                <p className="mt-1 text-blue-600">🔐 Biometric verification required</p>
+              {(biometricEnabled || fingerprintEnrolled) && (
+                <p className="mt-1 text-blue-600">
+                  🔐 {biometricEnabled && fingerprintEnrolled ? 'Biometric & Fingerprint' : biometricEnabled ? 'Biometric' : 'Fingerprint'} verification required
+                </p>
               )}
             </div>
           </div>
@@ -386,6 +492,55 @@ const PaymentGateway = () => {
                 {loading ? 'Verifying...' : 'Verify Fingerprint'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Verification Choice Modal */}
+      {showVerificationChoice && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4">
+            <h3 className="text-xl font-bold text-gray-900 mb-4 text-center">Choose Verification Method</h3>
+            <p className="text-gray-600 mb-6 text-center">Select how you want to verify your identity</p>
+            
+            <div className="space-y-3">
+              <button
+                onClick={() => handleVerificationChoice('browser')}
+                className="w-full flex items-center justify-between p-4 border-2 border-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
+              >
+                <div className="flex items-center">
+                  <svg className="w-6 h-6 text-blue-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4" />
+                  </svg>
+                  <span className="font-medium text-gray-900">Browser Biometric</span>
+                </div>
+                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+
+              <button
+                onClick={() => handleVerificationChoice('fingerprint')}
+                className="w-full flex items-center justify-between p-4 border-2 border-green-600 rounded-lg hover:bg-green-50 transition-colors"
+              >
+                <div className="flex items-center">
+                  <svg className="w-6 h-6 text-green-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+                  </svg>
+                  <span className="font-medium text-gray-900">Fingerprint Scanner</span>
+                </div>
+                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+
+            <button
+              onClick={() => setShowVerificationChoice(false)}
+              className="w-full mt-4 px-6 py-3 border-2 border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}

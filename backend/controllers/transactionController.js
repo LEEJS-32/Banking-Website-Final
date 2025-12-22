@@ -1,5 +1,6 @@
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
+const Account = require('../models/Account');
 const mongoose = require('mongoose');
 const { checkFraud } = require('../services/fraudDetection');
 const { checkRateLimit } = require('../middleware/rateLimit');
@@ -36,14 +37,22 @@ const deposit = async (req, res) => {
     // Check rate limit
     const rateLimitResult = await checkRateLimit(req.user._id, parseFloat(amount));
     if (!rateLimitResult.allowed) {
+      // Get user's primary account
+      const account = await Account.findOne({ userId: req.user._id, isPrimary: true }).session(session);
+      
+      if (!account) {
+        await session.abortTransaction();
+        return res.status(404).json({ message: 'No account found for this user' });
+      }
+      
       // Create blocked transaction record
-      const user = await User.findById(req.user._id).session(session);
       await Transaction.create([{
         userId: req.user._id,
+        accountId: account._id,
         type: 'deposit',
         amount: parseFloat(amount),
         description: description || 'Deposit',
-        balanceAfter: user.balance,
+        balanceAfter: account.balance,
         status: 'blocked',
         blockReason: rateLimitResult.reason,
       }], { session });
@@ -58,25 +67,33 @@ const deposit = async (req, res) => {
       });
     }
 
-    // Update user balance
-    const user = await User.findById(req.user._id).session(session);
-    user.balance += parseFloat(amount);
-    await user.save({ session });
+    // Get user's primary account
+    const account = await Account.findOne({ userId: req.user._id, isPrimary: true }).session(session);
+    
+    if (!account) {
+      await session.abortTransaction();
+      return res.status(404).json({ message: 'No account found for this user' });
+    }
+    
+    // Update account balance
+    account.balance += parseFloat(amount);
+    await account.save({ session });
 
     // Create transaction record
     const transaction = await Transaction.create([{
       userId: req.user._id,
+      accountId: account._id,
       type: 'deposit',
       amount: parseFloat(amount),
       description: description || 'Deposit',
-      balanceAfter: user.balance,
+      balanceAfter: account.balance,
       status: 'completed',
     }], { session });
 
     await session.commitTransaction();
     res.status(201).json({
       transaction: transaction[0],
-      newBalance: user.balance,
+      newBalance: account.balance,
     });
   } catch (error) {
     await session.abortTransaction();
@@ -104,14 +121,22 @@ const withdraw = async (req, res) => {
     // Check rate limit
     const rateLimitResult = await checkRateLimit(req.user._id, parseFloat(amount));
     if (!rateLimitResult.allowed) {
+      // Get user's primary account
+      const account = await Account.findOne({ userId: req.user._id, isPrimary: true }).session(session);
+      
+      if (!account) {
+        await session.abortTransaction();
+        return res.status(404).json({ message: 'No account found for this user' });
+      }
+      
       // Create blocked transaction record
-      const user = await User.findById(req.user._id).session(session);
       await Transaction.create([{
         userId: req.user._id,
+        accountId: account._id,
         type: 'withdrawal',
         amount: parseFloat(amount),
         description: description || 'Withdrawal',
-        balanceAfter: user.balance,
+        balanceAfter: account.balance,
         status: 'blocked',
         blockReason: rateLimitResult.reason,
       }], { session });
@@ -126,31 +151,38 @@ const withdraw = async (req, res) => {
       });
     }
 
-    const user = await User.findById(req.user._id).session(session);
+    // Get user's primary account
+    const account = await Account.findOne({ userId: req.user._id, isPrimary: true }).session(session);
+    
+    if (!account) {
+      await session.abortTransaction();
+      return res.status(404).json({ message: 'No account found for this user' });
+    }
 
-    if (user.balance < amount) {
+    if (account.balance < amount) {
       await session.abortTransaction();
       return res.status(400).json({ message: 'Insufficient funds' });
     }
 
-    // Update user balance
-    user.balance -= parseFloat(amount);
-    await user.save({ session });
+    // Update account balance
+    account.balance -= parseFloat(amount);
+    await account.save({ session });
 
     // Create transaction record
     const transaction = await Transaction.create([{
       userId: req.user._id,
+      accountId: account._id,
       type: 'withdrawal',
       amount: parseFloat(amount),
       description: description || 'Withdrawal',
-      balanceAfter: user.balance,
+      balanceAfter: account.balance,
       status: 'completed',
     }], { session });
 
     await session.commitTransaction();
     res.status(201).json({
       transaction: transaction[0],
-      newBalance: user.balance,
+      newBalance: account.balance,
     });
   } catch (error) {
     await session.abortTransaction();
@@ -178,19 +210,26 @@ const transfer = async (req, res) => {
     // Check rate limit BEFORE fraud detection
     const rateLimitResult = await checkRateLimit(req.user._id, parseFloat(amount));
     if (!rateLimitResult.allowed) {
-      // Create blocked transaction record
-      const sender = await User.findById(req.user._id).session(session);
-      const recipient = await User.findOne({ accountNumber: recipientAccountNumber }).session(session);
+      // Get sender's primary account
+      const senderAccount = await Account.findOne({ userId: req.user._id, isPrimary: true }).session(session);
+      const recipientAccount = await Account.findOne({ accountNumber: recipientAccountNumber }).session(session);
       
+      if (!senderAccount) {
+        await session.abortTransaction();
+        return res.status(404).json({ message: 'No account found for this user' });
+      }
+      
+      // Create blocked transaction record
       await Transaction.create([{
         userId: req.user._id,
+        accountId: senderAccount._id,
         type: 'transfer',
         amount: parseFloat(amount),
-        recipientId: recipient?._id,
+        recipientId: recipientAccount?.userId,
         recipientAccountNumber: recipientAccountNumber,
-        recipientName: recipient ? `${recipient.firstName} ${recipient.lastName}` : 'Unknown',
+        recipientName: recipientAccount ? 'Transfer recipient' : 'Unknown',
         description: description || 'Transfer',
-        balanceAfter: sender.balance,
+        balanceAfter: senderAccount.balance,
         status: 'blocked',
         blockReason: rateLimitResult.reason,
       }], { session });
@@ -205,23 +244,32 @@ const transfer = async (req, res) => {
       });
     }
 
-    const sender = await User.findById(req.user._id).session(session);
-    const recipient = await User.findOne({ accountNumber: recipientAccountNumber }).session(session);
+    // Get sender and recipient accounts
+    const senderAccount = await Account.findOne({ userId: req.user._id, isPrimary: true }).session(session);
+    const recipientAccount = await Account.findOne({ accountNumber: recipientAccountNumber }).session(session);
 
-    if (!recipient) {
+    if (!senderAccount) {
+      await session.abortTransaction();
+      return res.status(404).json({ message: 'Your account not found' });
+    }
+
+    if (!recipientAccount) {
       await session.abortTransaction();
       return res.status(404).json({ message: 'Recipient account not found' });
     }
 
-    if (sender.accountNumber === recipientAccountNumber) {
+    if (senderAccount.accountNumber === recipientAccountNumber) {
       await session.abortTransaction();
       return res.status(400).json({ message: 'Cannot transfer to your own account' });
     }
 
-    if (sender.balance < amount) {
+    if (senderAccount.balance < amount) {
       await session.abortTransaction();
       return res.status(400).json({ message: 'Insufficient funds' });
     }
+
+    // Get sender user for fraud detection
+    const sender = await User.findById(req.user._id).session(session);
 
     // Fraud Detection Check with correct 14-feature format
     const fraudResult = await checkFraud({
@@ -230,23 +278,27 @@ const transfer = async (req, res) => {
       senderProfile: {
         gender: sender.gender || 'M',
         dateOfBirth: sender.dateOfBirth,
-        bank: sender.bank || 'HSBC',
-        country: sender.country || 'United Kingdom',
-        shippingAddress: sender.shippingAddress || sender.country || 'United Kingdom',
+        bank: senderAccount.bank || 'HSBC',
+        country: senderAccount.country || 'United Kingdom',
+        shippingAddress: senderAccount.shippingAddress || senderAccount.country || 'United Kingdom',
       },
     });
 
     // If high-risk fraud detected, block the transaction
     if (fraudResult.is_fraud && fraudResult.risk_level === 'high') {
+      // Get recipient user
+      const recipient = await User.findById(recipientAccount.userId).session(session);
+      
       // Save blocked transaction record before aborting
       await Transaction.create([{
         userId: sender._id,
+        accountId: senderAccount._id,
         type: 'transfer',
         amount: -parseFloat(amount),
-        recipientAccountNumber: recipient.accountNumber,
+        recipientAccountNumber: recipientAccount.accountNumber,
         recipientName: `${recipient.firstName} ${recipient.lastName}`,
         description: description || 'Transfer',
-        balanceAfter: sender.balance, // Balance unchanged
+        balanceAfter: senderAccount.balance, // Balance unchanged
         status: 'blocked',
         fraudDetection: {
           checked: true,
@@ -271,22 +323,26 @@ const transfer = async (req, res) => {
       });
     }
 
-    // Update balances
-    sender.balance -= parseFloat(amount);
-    recipient.balance += parseFloat(amount);
+    // Get recipient user for transaction details
+    const recipient = await User.findById(recipientAccount.userId).session(session);
 
-    await sender.save({ session });
-    await recipient.save({ session });
+    // Update balances
+    senderAccount.balance -= parseFloat(amount);
+    recipientAccount.balance += parseFloat(amount);
+
+    await senderAccount.save({ session });
+    await recipientAccount.save({ session });
 
     // Create transaction records with fraud detection info
     const senderTransaction = await Transaction.create([{
       userId: sender._id,
+      accountId: senderAccount._id,
       type: 'transfer',
       amount: -parseFloat(amount),
-      recipientAccountNumber: recipient.accountNumber,
+      recipientAccountNumber: recipientAccount.accountNumber,
       recipientName: `${recipient.firstName} ${recipient.lastName}`,
       description: description || 'Transfer',
-      balanceAfter: sender.balance,
+      balanceAfter: senderAccount.balance,
       status: (fraudResult.is_fraud && fraudResult.risk_level === 'medium') ? 'pending' : 'completed',
       fraudDetection: {
         checked: true,
@@ -300,12 +356,13 @@ const transfer = async (req, res) => {
 
     await Transaction.create([{
       userId: recipient._id,
+      accountId: recipientAccount._id,
       type: 'transfer',
       amount: parseFloat(amount),
-      recipientAccountNumber: sender.accountNumber,
+      recipientAccountNumber: senderAccount.accountNumber,
       recipientName: `${sender.firstName} ${sender.lastName}`,
       description: description || 'Transfer received',
-      balanceAfter: recipient.balance,
+      balanceAfter: recipientAccount.balance,
       status: fraudResult.recommendation === 'REVIEW' ? 'pending' : 'completed',
     }], { session });
 
@@ -313,7 +370,7 @@ const transfer = async (req, res) => {
     
     const response = {
       transaction: senderTransaction[0],
-      newBalance: sender.balance,
+      newBalance: senderAccount.balance,
       fraudDetection: {
         checked: true,
         isFraud: fraudResult.is_fraud,

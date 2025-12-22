@@ -151,11 +151,11 @@ const AdminUsers = () => {
                   </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-900">{u.accountNumber}</div>
-                  <div className="text-sm text-gray-500 capitalize">{u.accountType}</div>
+                  <div className="text-sm text-gray-900">{u.accountNumber || 'N/A'}</div>
+                  <div className="text-sm text-gray-500 capitalize">{u.accountType || 'N/A'}</div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm font-medium text-gray-900">${u.balance.toFixed(2)}</div>
+                  <div className="text-sm font-medium text-gray-900">${(u.balance || 0).toFixed(2)}</div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${

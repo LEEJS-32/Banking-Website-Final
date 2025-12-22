@@ -13,7 +13,16 @@ const PrivateRoute = ({ children }) => {
     );
   }
 
-  return user ? children : <Navigate to="/login" />;
+  if (!user) {
+    return <Navigate to="/login" />;
+  }
+
+  // Redirect admin users to admin dashboard
+  if (user.role === 'admin') {
+    return <Navigate to="/admin/dashboard" />;
+  }
+
+  return children;
 };
 
 export default PrivateRoute;

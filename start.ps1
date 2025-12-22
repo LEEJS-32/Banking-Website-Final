@@ -27,7 +27,7 @@ Write-Host ""
 
 # Start Fraud Detection API
 Write-Host "[1/3] Starting Fraud Detection API on port 5001..." -ForegroundColor Cyan
-Start-Process -FilePath "python" -ArgumentList "fraud_api.py" -WorkingDirectory "$PSScriptRoot\transaction_9_Gemini" -WindowStyle Normal
+Start-Process -FilePath "python" -ArgumentList "fraud_api.py" -WorkingDirectory "$PSScriptRoot\transaction" -WindowStyle Normal
 
 Start-Sleep -Seconds 3
 

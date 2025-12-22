@@ -5,7 +5,7 @@ echo ================================================
 echo.
 
 echo [1/4] Starting Fraud Detection API...
-cd transaction_9_Gemini
+cd transaction
 start "Fraud Detection API" cmd /k "python fraud_api.py"
 timeout /t 3 /nobreak >nul
 
