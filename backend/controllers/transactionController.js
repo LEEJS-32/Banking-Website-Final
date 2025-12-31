@@ -300,6 +300,9 @@ const transfer = async (req, res) => {
         description: description || 'Transfer',
         balanceAfter: senderAccount.balance, // Balance unchanged
         status: 'blocked',
+        blockReason: fraudResult?.reasons?.length
+          ? `Transaction blocked due to high fraud risk: ${fraudResult.reasons[0]}`
+          : 'Transaction blocked due to high fraud risk',
         fraudDetection: {
           checked: true,
           isFraud: fraudResult.is_fraud,

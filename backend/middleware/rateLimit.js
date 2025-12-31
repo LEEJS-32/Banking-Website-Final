@@ -6,7 +6,7 @@ const mongoose = require('mongoose');
 const RATE_LIMITS = {
   RAPID_FIRE: {
     count: 3,
-    windowMinutes: 5,
+    windowMinutes: 1,
     blockMinutes: 30,
   },
   HOURLY: {

@@ -77,6 +77,33 @@ const transactionSchema = new mongoose.Schema({
       enum: ['low', 'medium', 'high', 'critical'],
     },
   },
+  fraudDetection: {
+    checked: {
+      type: Boolean,
+      default: false,
+    },
+    isFraud: {
+      type: Boolean,
+      default: false,
+    },
+    fraudProbability: {
+      type: Number,
+      min: 0,
+      max: 1,
+    },
+    riskLevel: {
+      type: String,
+      enum: ['low', 'medium', 'high'],
+    },
+    reasons: {
+      type: [String],
+      default: [],
+    },
+    recommendation: {
+      type: String,
+      enum: ['APPROVE', 'REVIEW', 'BLOCK'],
+    },
+  },
   fraudDetectionId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'FraudDetection',

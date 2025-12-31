@@ -356,7 +356,7 @@ const unblockUserTransactions = async (req, res) => {
     // Clear transaction blocks and recent transactions
     user.transactionBlockedUntil = undefined;
     user.transactionBlockReason = undefined;
-    user.recentTransactions = [];
+    user.recentTransactions = []; // Clear transaction history when admin unblocks
     await user.save();
     
     res.json({

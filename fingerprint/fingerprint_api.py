@@ -14,6 +14,8 @@ import base64
 import json
 import os
 from datetime import datetime
+from pymongo import MongoClient
+from bson.objectid import ObjectId
 
 app = Flask(__name__)
 CORS(app)
@@ -23,7 +25,18 @@ CORS(app)
 # ==========================================
 SCANNER_PORT = 'COM3'
 MATCH_THRESHOLD = 25
-DATABASE_FILE = 'fingerprint_db.json'
+MONGODB_URI = 'mongodb+srv://leejsjm22_db_user:VXiN9t77bFoScqDS@securebank.k5vk9zy.mongodb.net/?appName=SecureBank'
+
+# MongoDB Connection
+try:
+    mongo_client = MongoClient(MONGODB_URI)
+    db = mongo_client.get_database('test')  # Using 'test' database like Node.js backend
+    users_collection = db['users']
+    print("[+] Connected to MongoDB successfully")
+except Exception as e:
+    print(f"[-] MongoDB connection failed: {e}")
+    mongo_client = None
+    users_collection = None
 
 # ==========================================
 # R307 DRIVER
@@ -199,17 +212,73 @@ def base64_to_image(b64_string):
     return cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
 
 # ==========================================
-# DATABASE FUNCTIONS
+# DATABASE FUNCTIONS (MongoDB)
 # ==========================================
-def load_database():
-    if os.path.exists(DATABASE_FILE):
-        with open(DATABASE_FILE, 'r') as f:
-            return json.load(f)
-    return {}
+def get_user_by_email(email):
+    """Get user from MongoDB by email"""
+    if not users_collection:
+        return None
+    return users_collection.find_one({'email': email})
 
-def save_database(db):
-    with open(DATABASE_FILE, 'w') as f:
-        json.dump(db, f)
+def update_user_fingerprint(email, fingerprint_data, enrolled=True):
+    """Update user's fingerprint data in MongoDB"""
+    if not users_collection:
+        return False
+    
+    try:
+        result = users_collection.update_one(
+            {'email': email},
+            {
+                '$set': {
+                    'fingerprintData': fingerprint_data,
+                    'fingerprintEnrolled': enrolled,
+                    'fingerprintEnrolledAt': datetime.utcnow() if enrolled else None,
+                    'fingerprintDevice': 'R307'
+                }
+            }
+        )
+        return result.modified_count > 0 or result.matched_count > 0
+    except Exception as e:
+        print(f"[-] MongoDB update error: {e}")
+        return False
+
+def get_all_fingerprints():
+    """Get all enrolled fingerprints from MongoDB"""
+    if not users_collection:
+        return {}
+    
+    fingerprints = {}
+    try:
+        users = users_collection.find({'fingerprintEnrolled': True, 'fingerprintData': {'$exists': True}})
+        for user in users:
+            fingerprints[user['email']] = user.get('fingerprintData', {})
+    except Exception as e:
+        print(f"[-] MongoDB query error: {e}")
+    
+    return fingerprints
+
+def delete_user_fingerprint(email):
+    """Delete user's fingerprint data from MongoDB"""
+    if not users_collection:
+        return False
+    
+    try:
+        result = users_collection.update_one(
+            {'email': email},
+            {
+                '$unset': {
+                    'fingerprintData': ''
+                },
+                '$set': {
+                    'fingerprintEnrolled': False,
+                    'fingerprintEnrolledAt': None
+                }
+            }
+        )
+        return result.modified_count > 0
+    except Exception as e:
+        print(f"[-] MongoDB delete error: {e}")
+        return False
 
 # ==========================================
 # SCANNER INSTANCE
@@ -257,6 +326,14 @@ def enroll_fingerprint():
         if not user_id:
             return jsonify({'error': 'userId is required'}), 400
         
+        if not users_collection:
+            return jsonify({'error': 'Database not connected'}), 500
+        
+        # Check if user exists
+        user = get_user_by_email(user_id)
+        if not user:
+            return jsonify({'error': f'User {user_id} not found in database'}), 404
+        
         if not scanner.connected:
             return jsonify({'error': 'Scanner not connected'}), 500
         
@@ -276,23 +353,21 @@ def enroll_fingerprint():
         # Convert to base64 for storage
         img_b64 = image_to_base64(processed_img)
         
-        # Load database
-        db = load_database()
-        
-        # Store fingerprint
-        db[user_id] = {
+        # Store fingerprint in MongoDB
+        fingerprint_data = {
             'fingerprint': img_b64,
             'enrolled_at': datetime.now().isoformat(),
             'device': 'R307'
         }
         
-        save_database(db)
-        
-        return jsonify({
-            'success': True,
-            'message': f'Fingerprint enrolled successfully for {user_id}',
-            'userId': user_id
-        })
+        if update_user_fingerprint(user_id, fingerprint_data, True):
+            return jsonify({
+                'success': True,
+                'message': f'Fingerprint enrolled successfully for {user_id}',
+                'userId': user_id
+            })
+        else:
+            return jsonify({'error': 'Failed to save fingerprint to database'}), 500
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -306,6 +381,9 @@ def verify_fingerprint():
     try:
         data = request.json
         user_id = data.get('userId')
+        
+        if not users_collection:
+            return jsonify({'error': 'Database not connected'}), 500
         
         if not scanner.connected:
             return jsonify({'error': 'Scanner not connected'}), 500
@@ -323,8 +401,8 @@ def verify_fingerprint():
         img = scanner.to_image(raw)
         processed_img = process_image(img)
         
-        # Load database
-        db = load_database()
+        # Get all enrolled fingerprints from MongoDB
+        db = get_all_fingerprints()
         
         if not db:
             return jsonify({'error': 'No fingerprints enrolled in database'}), 400
@@ -396,18 +474,17 @@ def remove_fingerprint():
         if not user_id:
             return jsonify({'error': 'userId is required'}), 400
         
-        db = load_database()
+        if not users_collection:
+            return jsonify({'error': 'Database not connected'}), 500
         
-        if user_id not in db:
-            return jsonify({'error': f'No fingerprint found for {user_id}'}), 404
-        
-        del db[user_id]
-        save_database(db)
-        
-        return jsonify({
-            'success': True,
-            'message': f'Fingerprint removed for {user_id}'
-        })
+        # Delete fingerprint from MongoDB
+        if delete_user_fingerprint(user_id):
+            return jsonify({
+                'success': True,
+                'message': f'Fingerprint removed for {user_id}'
+            })
+        else:
+            return jsonify({'error': f'No fingerprint found for {user_id} or failed to delete'}), 404
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -416,7 +493,10 @@ def remove_fingerprint():
 def list_enrolled():
     """List all enrolled fingerprints"""
     try:
-        db = load_database()
+        if not users_collection:
+            return jsonify({'error': 'Database not connected'}), 500
+        
+        db = get_all_fingerprints()
         users = []
         
         for user_id, user_data in db.items():
@@ -444,6 +524,8 @@ if __name__ == '__main__':
     print(f"Scanner Port: {SCANNER_PORT}")
     print(f"Match Threshold: {MATCH_THRESHOLD}")
     print(f"Scanner Status: {'Connected' if scanner.connected else 'Disconnected'}")
+    print(f"MongoDB Status: {'Connected' if users_collection else 'Disconnected'}")
+    print(f"Database: MongoDB (Cloud)")
     print("=" * 50)
     print("\nStarting server on http://localhost:5002")
     print("\nAvailable endpoints:")

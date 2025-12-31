@@ -265,7 +265,9 @@ const processPayment = async (req, res) => {
       // Block payment; do NOT deduct funds
       existingPending.status = 'blocked';
       existingPending.balanceAfter = account.balance;
-      existingPending.blockReason = 'Transaction blocked due to high fraud risk';
+      existingPending.blockReason = (fraudResult?.reasons?.length)
+        ? `Transaction blocked due to high fraud risk: ${fraudResult.reasons[0]}`
+        : 'Transaction blocked due to high fraud risk';
       existingPending.expiresAt = undefined;
       existingPending.fraudDetection = {
         checked: true,

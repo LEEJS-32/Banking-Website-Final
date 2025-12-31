@@ -84,6 +84,13 @@ const AdminTransactions = () => {
     return transactions.filter(t => t.status === 'blocked' && t.blockReason && !t.fraudWebsiteDetection?.detected).length;
   };
 
+  const isRateLimitBlock = (transaction) => {
+    if (!transaction || transaction.status !== 'blocked') return false;
+    if (!transaction.blockReason || typeof transaction.blockReason !== 'string') return false;
+    // Rate limit blocks always use our throttling messages.
+    return /too many transactions|transaction limit exceeded/i.test(transaction.blockReason);
+  };
+
   const getRiskLevelColor = (riskLevel) => {
     switch (riskLevel) {
       case 'high': return 'text-red-600 bg-red-100';
@@ -308,15 +315,6 @@ const AdminTransactions = () => {
                             {transaction.fraudWebsiteDetection.riskLevel?.toUpperCase()}
                           </div>
                         </div>
-                      ) : transaction.status === 'blocked' && transaction.blockReason ? (
-                        <div className="space-y-1">
-                          <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-orange-100 text-orange-800">
-                            ⏱️ RATE LIMITED
-                          </span>
-                          <div className="text-xs text-gray-500">
-                            Too frequent
-                          </div>
-                        </div>
                       ) : transaction.fraudDetection?.checked ? (
                         <div className="space-y-1">
                           {transaction.fraudDetection.isFraud ? (
@@ -335,6 +333,15 @@ const AdminTransactions = () => {
                               ✓ SAFE
                             </span>
                           )}
+                        </div>
+                      ) : isRateLimitBlock(transaction) ? (
+                        <div className="space-y-1">
+                          <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-orange-100 text-orange-800">
+                            ⏱️ RATE LIMITED
+                          </span>
+                          <div className="text-xs text-gray-500">
+                            Too frequent
+                          </div>
                         </div>
                       ) : (
                         <span className="text-xs text-gray-400">Not checked</span>
@@ -376,9 +383,11 @@ const AdminTransactions = () => {
                   <h3 className="text-xl font-bold text-gray-900">
                     {selectedTransaction.fraudWebsiteDetection?.detected 
                       ? 'Fraud Website Block Details'
-                      : selectedTransaction.blockReason 
-                      ? 'Rate Limit Block Details' 
-                      : 'Fraud Detection Details'}
+                      : selectedTransaction.fraudDetection?.checked
+                      ? 'Fraud Detection Details'
+                      : isRateLimitBlock(selectedTransaction)
+                      ? 'Rate Limit Block Details'
+                      : 'Transaction Details'}
                   </h3>
                   <p className="text-sm text-gray-500 mt-1">Transaction ID: {selectedTransaction._id}</p>
                 </div>
@@ -495,7 +504,7 @@ const AdminTransactions = () => {
               )}
 
               {/* Rate Limit Block Info */}
-              {selectedTransaction.blockReason && !selectedTransaction.fraudWebsiteDetection?.detected && (
+              {isRateLimitBlock(selectedTransaction) && !selectedTransaction.fraudWebsiteDetection?.detected && (
                 <div className="border-t pt-4">
                   <h4 className="font-semibold text-gray-900 mb-3">Rate Limit Block Information</h4>
                   <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
@@ -517,7 +526,7 @@ const AdminTransactions = () => {
               )}
 
               {/* Fraud Risk Score */}
-              {selectedTransaction.fraudDetection && !selectedTransaction.blockReason && !selectedTransaction.fraudWebsiteDetection?.detected && (
+              {selectedTransaction.fraudDetection?.checked && !selectedTransaction.fraudWebsiteDetection?.detected && (
                 <>
                   <div className="border-t pt-4">
                     <h4 className="font-semibold text-gray-900 mb-3">Fraud Risk Assessment</h4>
